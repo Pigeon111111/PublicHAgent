@@ -1,0 +1,50 @@
+{
+  "app": {
+    "name": "PubHAgent",
+    "version": "0.1.0",
+    "debug": false
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/app.log",
+    "console": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "docker_image": "python:3.11-slim",
+    "memory_limit": "512m",
+    "cpu_limit": "1.0",
+    "timeout": 60,
+    "network_disabled": true,
+    "allowed_modules": [
+      "pandas",
+      "numpy",
+      "scipy",
+      "matplotlib",
+      "seaborn",
+      "openpyxl",
+      "docx"
+    ]
+  },
+  "memory": {
+    "provider": "mem0",
+    "vector_store": "chromadb",
+    "embedding_model": "text-embedding-3-small",
+    "collection_name": "pubhagent_memory",
+    "short_term_limit": 10,
+    "long_term_enabled": true
+  },
+  "agent": {
+    "max_iterations": 10,
+    "reflection_attempts": 3,
+    "planner_model": "gpt-4o",
+    "executor_model": "gpt-4o-mini"
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "cors_origins": ["http://localhost:3000"],
+    "websocket_path": "/ws"
+  }
+}

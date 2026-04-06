@@ -1,0 +1,41 @@
+{
+  "mcp_servers": [
+    {
+      "name": "filesystem",
+      "description": "文件系统操作服务",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "./data"
+      ],
+      "enabled": true,
+      "env": {}
+    },
+    {
+      "name": "sqlite",
+      "description": "SQLite 数据库操作服务",
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "./data/database.db"
+      ],
+      "enabled": true,
+      "env": {}
+    },
+    {
+      "name": "puppeteer",
+      "description": "浏览器自动化服务",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "enabled": false,
+      "env": {}
+    }
+  ],
+  "connection_timeout": 30,
+  "retry_attempts": 3
+}
