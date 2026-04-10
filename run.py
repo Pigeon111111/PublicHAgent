@@ -5,6 +5,7 @@
 """
 
 import argparse
+import importlib.util
 import os
 import subprocess
 import sys
@@ -17,7 +18,7 @@ PROJECT_ROOT = Path(__file__).parent
 
 def check_python_version() -> bool:
     """检查 Python 版本"""
-    if sys.version_info < (3, 10):
+    if sys.version_info < (3, 10):  # noqa: UP036
         print("错误: 需要 Python 3.10 或更高版本")
         return False
     return True
@@ -25,15 +26,19 @@ def check_python_version() -> bool:
 
 def check_dependencies() -> bool:
     """检查依赖是否安装"""
-    try:
-        import fastapi
-        import uvicorn
+    missing = [
+        module_name
+        for module_name in ("fastapi", "uvicorn")
+        if importlib.util.find_spec(module_name) is None
+    ]
+
+    if not missing:
         print("✓ 后端依赖已安装")
         return True
-    except ImportError as e:
-        print(f"错误: 缺少依赖 - {e}")
-        print("请运行: pip install -r requirements.txt")
-        return False
+
+    print(f"错误: 缺少依赖 - {', '.join(missing)}")
+    print("请运行: pip install -r requirements.txt")
+    return False
 
 
 def check_config() -> bool:
@@ -55,13 +60,22 @@ def start_backend(blocking: bool = False) -> subprocess.Popen | None:
     """启动后端服务"""
     print("正在启动后端服务...")
 
-    backend_dir = PROJECT_ROOT / "backend"
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PROJECT_ROOT)
 
     try:
         process = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "backend.api.main:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+                "--reload",
+            ],
             cwd=PROJECT_ROOT,
             env=env,
             stdout=subprocess.PIPE,
@@ -72,6 +86,7 @@ def start_backend(blocking: bool = False) -> subprocess.Popen | None:
 
         if not blocking:
             import threading
+
             def print_output():
                 for line in process.stdout:
                     print(f"[后端] {line.rstrip()}")
@@ -79,7 +94,7 @@ def start_backend(blocking: bool = False) -> subprocess.Popen | None:
             thread = threading.Thread(target=print_output, daemon=True)
             thread.start()
 
-        print(f"✓ 后端服务已启动: http://localhost:8000")
+        print("✓ 后端服务已启动: http://localhost:8000")
         return process
     except Exception as e:
         print(f"错误: 启动后端服务失败 - {e}")
@@ -109,6 +124,7 @@ def start_frontend() -> subprocess.Popen | None:
         )
 
         import threading
+
         def print_output():
             for line in process.stdout:
                 print(f"[前端] {line.rstrip()}")
@@ -116,7 +132,7 @@ def start_frontend() -> subprocess.Popen | None:
         thread = threading.Thread(target=print_output, daemon=True)
         thread.start()
 
-        print(f"✓ 前端服务已启动")
+        print("✓ 前端服务已启动")
         return process
     except Exception as e:
         print(f"错误: 启动前端服务失败 - {e}")
