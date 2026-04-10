@@ -3,9 +3,7 @@
 测试 MemoryManager 的各项功能。
 """
 
-import os
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

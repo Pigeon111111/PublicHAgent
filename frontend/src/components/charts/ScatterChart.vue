@@ -69,7 +69,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="scatter-chart" ref="chartRef" />
+  <div
+    ref="chartRef"
+    class="scatter-chart"
+  />
 </template>
 
 <style scoped>

@@ -3,22 +3,15 @@
 测试 WebSocket 连接、消息传递和会话管理。
 """
 
-import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from backend.api.main import create_app
 from backend.api.protocol import (
-    AgentMessage,
-    ErrorMessage,
     MessageFactory,
     MessageType,
-    ProgressMessage,
-    StatusMessage,
     UserMessage,
 )
 from backend.api.websocket import (

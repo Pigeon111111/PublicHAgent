@@ -41,10 +41,21 @@ class SkillExample(BaseModel):
     output: str | dict[str, Any] | None = Field(default=None, description="预期输出")
 
 
+class SkillCapability(BaseModel):
+    """技能能力描述"""
+
+    capability: str = Field(default="", description="能力范围描述")
+    limitations: list[str] = Field(default_factory=list, description="限制条件")
+    applicable_scenarios: list[str] = Field(default_factory=list, description="适用场景")
+
+
 class Skill(BaseModel):
     """技能完整定义"""
 
     metadata: SkillMetadata = Field(..., description="技能元数据")
+    capability: SkillCapability = Field(
+        default_factory=SkillCapability, description="能力描述"
+    )
     parameters: list[SkillParameter] = Field(default_factory=list, description="参数列表")
     prompt_template: str = Field(default="", description="提示词模板")
     examples: list[SkillExample] = Field(default_factory=list, description="使用示例")

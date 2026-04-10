@@ -1,9 +1,22 @@
 <script setup lang="ts">
+import NavBar from '@/components/NavBar.vue'
 </script>
 
 <template>
   <el-config-provider :locale="zhCn">
-    <router-view />
+    <div class="app-container">
+      <NavBar />
+      <main class="app-main">
+        <router-view v-slot="{ Component }">
+          <transition
+            name="fade"
+            mode="out-in"
+          >
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </main>
+    </div>
   </el-config-provider>
 </template>
 
@@ -45,5 +58,30 @@ html, body, #app {
 
 ::-webkit-scrollbar-track {
   background-color: #f1f1f1;
+}
+</style>
+
+<style scoped>
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f5f7fa;
+}
+
+.app-main {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 页面过渡动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

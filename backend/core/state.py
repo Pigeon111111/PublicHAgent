@@ -35,6 +35,8 @@ class AgentState(TypedDict):
     """
 
     user_query: str
+    user_context: dict[str, Any]
+    session_id: str
     intent: str
     intent_confidence: float
     plan: Plan | None
@@ -46,9 +48,18 @@ class AgentState(TypedDict):
     messages: Annotated[list[Any], add_messages]
     iteration_count: int
     max_iterations: int
+    workspace: dict[str, Any]
+    plan_model: Any
+    executor_results: list[Any]
+    trajectory_id: str
+    learned_skill: str | None
 
 
-def create_initial_state(user_query: str) -> AgentState:
+def create_initial_state(
+    user_query: str,
+    user_context: dict[str, Any] | None = None,
+    session_id: str = "default",
+) -> AgentState:
     """创建初始状态
 
     Args:
@@ -59,6 +70,8 @@ def create_initial_state(user_query: str) -> AgentState:
     """
     return AgentState(
         user_query=user_query,
+        user_context=user_context or {},
+        session_id=session_id,
         intent="",
         intent_confidence=0.0,
         plan=None,
@@ -70,6 +83,11 @@ def create_initial_state(user_query: str) -> AgentState:
         messages=[],
         iteration_count=0,
         max_iterations=10,
+        workspace={},
+        plan_model=None,
+        executor_results=[],
+        trajectory_id="",
+        learned_skill=None,
     )
 
 

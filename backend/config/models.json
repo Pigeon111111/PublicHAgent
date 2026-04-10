@@ -1,4 +1,128 @@
 {
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "models": [
+        {
+          "id": "gpt-4o",
+          "name": "GPT-4o",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "gpt-4o-mini",
+          "name": "GPT-4o Mini",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "gpt-4-turbo",
+          "name": "GPT-4 Turbo",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "gpt-3.5-turbo",
+          "name": "GPT-3.5 Turbo",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        }
+      ]
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "models": [
+        {
+          "id": "claude-3-5-sonnet-20241022",
+          "name": "Claude 3.5 Sonnet",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "claude-3-5-haiku-20241022",
+          "name": "Claude 3.5 Haiku",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "claude-3-opus-20240229",
+          "name": "Claude 3 Opus",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        }
+      ]
+    },
+    "deepseek": {
+      "name": "DeepSeek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "models": [
+        {
+          "id": "deepseek-chat",
+          "name": "DeepSeek Chat",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "deepseek-coder",
+          "name": "DeepSeek Coder",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        },
+        {
+          "id": "deepseek-reasoner",
+          "name": "DeepSeek Reasoner",
+          "max_tokens": 4096,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": false
+        }
+      ]
+    },
+    "longcat": {
+      "name": "LongCat",
+      "base_url": "https://api.longcat.ai/v1",
+      "api_key_env": "LONGCAT_API_KEY",
+      "models": [
+        {
+          "id": "longcat-chat",
+          "name": "LongCat Chat",
+          "max_tokens": 8192,
+          "temperature": 0.7,
+          "supports_streaming": true,
+          "supports_function_calling": true
+        }
+      ]
+    },
+    "custom": {
+      "name": "Custom",
+      "base_url": null,
+      "api_key_env": "CUSTOM_API_KEY",
+      "models": []
+    }
+  },
   "models": [
     {
       "id": "gpt-4o",
@@ -29,6 +153,39 @@
       "base_url": "https://api.anthropic.com",
       "api_key_env": "ANTHROPIC_API_KEY",
       "max_tokens": 4096,
+      "temperature": 0.7,
+      "supports_streaming": true,
+      "supports_function_calling": true
+    },
+    {
+      "id": "deepseek-chat",
+      "name": "DeepSeek Chat",
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "supports_streaming": true,
+      "supports_function_calling": true
+    },
+    {
+      "id": "deepseek-coder",
+      "name": "DeepSeek Coder",
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "supports_streaming": true,
+      "supports_function_calling": true
+    },
+    {
+      "id": "longcat-chat",
+      "name": "LongCat Chat",
+      "provider": "longcat",
+      "base_url": "https://api.longcat.ai/v1",
+      "api_key_env": "LONGCAT_API_KEY",
+      "max_tokens": 8192,
       "temperature": 0.7,
       "supports_streaming": true,
       "supports_function_calling": true

@@ -15,7 +15,7 @@ import docker
 from docker.errors import APIError, ContainerError, ImageNotFound
 from docker.models.containers import Container
 
-from backend.sandbox.security import SecurityPolicy, ExecutionLimits
+from backend.sandbox.security import ExecutionLimits, SecurityPolicy
 
 
 class ContainerStatus(Enum):
@@ -114,7 +114,7 @@ class SandboxManager:
         self._containers: dict[str, ContainerInfo] = {}
         self._pool_lock = asyncio.Lock()
         self._initialized = False
-        
+
         # 初始化安全策略
         execution_limits = ExecutionLimits(
             timeout=self._config.timeout,
@@ -139,10 +139,10 @@ class SandboxManager:
             client = self._get_client()
             client.ping()
             self._initialized = True
-            
+
             # 预热容器池
             self._warmup_containers()
-            
+
             return True
         except Exception as e:
             print(f"初始化沙箱管理器失败: {e}")
@@ -274,7 +274,7 @@ class SandboxManager:
 
         if timeout is None:
             timeout = self._config.timeout
-        
+
         # 安全检查
         allowed, reason = self._security_policy.is_execution_allowed(code)
         if not allowed:

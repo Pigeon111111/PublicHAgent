@@ -108,26 +108,46 @@ function getFileIcon(filename: string): string {
       @dragover.prevent="handleDragOver"
       @dragleave="handleDragLeave"
     >
-      <el-icon :size="48" class="upload-icon"><Upload /></el-icon>
+      <el-icon
+        :size="48"
+        class="upload-icon"
+      >
+        <Upload />
+      </el-icon>
       <p>拖拽文件到此处上传</p>
-      <p class="upload-hint">支持 CSV, XLSX, JSON, PDF, Word 等格式，最大 50MB</p>
+      <p class="upload-hint">
+        支持 CSV, XLSX, JSON, PDF, Word 等格式，最大 50MB
+      </p>
       <input
         type="file"
         multiple
         class="file-input"
-        @change="handleFileChange"
         accept=".csv,.xlsx,.xls,.json,.txt,.parquet,.feather,.pdf,.docx,.doc"
-      />
+        @change="handleFileChange"
+      >
     </div>
 
-    <div v-if="fileList.length > 0" class="file-preview">
-      <div v-for="(file, index) in fileList" :key="index" class="preview-item">
-        <el-icon class="file-icon"><component :is="getFileIcon(file.name)" /></el-icon>
+    <div
+      v-if="fileList.length > 0"
+      class="file-preview"
+    >
+      <div
+        v-for="(file, index) in fileList"
+        :key="index"
+        class="preview-item"
+      >
+        <el-icon class="file-icon">
+          <component :is="getFileIcon(file.name)" />
+        </el-icon>
         <div class="file-info">
           <span class="file-name">{{ file.name }}</span>
           <span class="file-size">{{ formatFileSize(file.size) }}</span>
         </div>
-        <el-button type="danger" text @click="removeFile(index)">
+        <el-button
+          type="danger"
+          text
+          @click="removeFile(index)"
+        >
           <el-icon><Delete /></el-icon>
         </el-button>
       </div>
@@ -137,8 +157,8 @@ function getFileIcon(filename: string): string {
       type="primary"
       :disabled="fileList.length === 0"
       :loading="uploading"
-      @click="handleUpload"
       class="upload-btn"
+      @click="handleUpload"
     >
       <el-icon><Upload /></el-icon>
       上传文件

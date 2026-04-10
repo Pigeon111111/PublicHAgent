@@ -70,33 +70,64 @@ function formatFileSize(size: number): string {
               <template #header>
                 <div class="card-header">
                   <span>已上传文件</span>
-                  <el-button type="primary" text @click="loadFiles">
+                  <el-button
+                    type="primary"
+                    text
+                    @click="loadFiles"
+                  >
                     <el-icon><Refresh /></el-icon>
                     刷新
                   </el-button>
                 </div>
               </template>
-              <el-table :data="fileStore.files" v-loading="loading" stripe>
-                <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip />
-                <el-table-column label="大小" width="120">
+              <el-table
+                v-loading="loading"
+                :data="fileStore.files"
+                stripe
+              >
+                <el-table-column
+                  prop="filename"
+                  label="文件名"
+                  min-width="200"
+                  show-overflow-tooltip
+                />
+                <el-table-column
+                  label="大小"
+                  width="120"
+                >
                   <template #default="{ row }">
                     {{ formatFileSize(row.size) }}
                   </template>
                 </el-table-column>
-                <el-table-column prop="content_type" label="类型" width="180" show-overflow-tooltip />
-                <el-table-column label="上传时间" width="180">
+                <el-table-column
+                  prop="content_type"
+                  label="类型"
+                  width="180"
+                  show-overflow-tooltip
+                />
+                <el-table-column
+                  label="上传时间"
+                  width="180"
+                >
                   <template #default="{ row }">
                     {{ new Date(row.upload_time).toLocaleString() }}
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="100" fixed="right">
+                <el-table-column
+                  label="操作"
+                  width="100"
+                  fixed="right"
+                >
                   <template #default="{ row }">
                     <el-popconfirm
                       title="确定要删除此文件吗？"
                       @confirm="handleDelete(row.id)"
                     >
                       <template #reference>
-                        <el-button type="danger" text>
+                        <el-button
+                          type="danger"
+                          text
+                        >
                           <el-icon><Delete /></el-icon>
                         </el-button>
                       </template>

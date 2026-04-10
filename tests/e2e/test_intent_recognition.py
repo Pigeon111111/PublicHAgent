@@ -3,11 +3,12 @@
 测试意图识别模块的完整功能。
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from backend.agents.intent.recognizer import IntentRecognizer, IntentResult
+import pytest
+
 from backend.agents.intent.keywords import INTENT_KEYWORDS
+from backend.agents.intent.recognizer import IntentRecognizer, IntentResult
 
 
 class TestIntentRecognitionE2E:

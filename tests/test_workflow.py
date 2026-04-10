@@ -1,12 +1,11 @@
 """LangGraph 工作流集成测试"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.agents.intent.recognizer import IntentResult
 from backend.core.state import (
-    AgentState,
     create_execution_step,
     create_initial_state,
     create_plan,

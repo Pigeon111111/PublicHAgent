@@ -57,20 +57,33 @@ function exportToWord() {
 <template>
   <div class="result-display">
     <div class="result-actions">
-      <el-button type="primary" @click="exportToPDF">
+      <el-button
+        type="primary"
+        @click="exportToPDF"
+      >
         <el-icon><Download /></el-icon>
         导出 PDF
       </el-button>
-      <el-button type="success" @click="exportToWord">
+      <el-button
+        type="success"
+        @click="exportToWord"
+      >
         <el-icon><Document /></el-icon>
         导出 Word
       </el-button>
     </div>
 
-    <div class="charts-section" v-if="charts.length > 0">
+    <div
+      v-if="charts.length > 0"
+      class="charts-section"
+    >
       <h3>图表结果</h3>
       <el-row :gutter="24">
-        <el-col :span="12" v-for="(chart, index) in chartComponents" :key="index">
+        <el-col
+          v-for="(chart, index) in chartComponents"
+          :key="index"
+          :span="12"
+        >
           <el-card class="chart-card">
             <component
               :is="chart.component"
@@ -83,10 +96,21 @@ function exportToWord() {
       </el-row>
     </div>
 
-    <div class="tables-section" v-if="tables.length > 0">
+    <div
+      v-if="tables.length > 0"
+      class="tables-section"
+    >
       <h3>数据表格</h3>
-      <el-card v-for="(table, index) in tables" :key="index" class="table-card">
-        <el-table :data="(table.rows as Record<string, unknown>[]) || []" stripe border>
+      <el-card
+        v-for="(table, index) in tables"
+        :key="index"
+        class="table-card"
+      >
+        <el-table
+          :data="(table.rows as Record<string, unknown>[]) || []"
+          stripe
+          border
+        >
           <el-table-column
             v-for="(col, colIndex) in (table.columns as string[]) || []"
             :key="colIndex"

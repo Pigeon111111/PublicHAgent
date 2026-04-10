@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import config, files, history
+from backend.api.routes import config, files, history, learning, skills, user_config
 from backend.api.websocket import router as websocket_router
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,9 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix="/api", tags=["files"])
     app.include_router(history.router, prefix="/api", tags=["history"])
     app.include_router(config.router, prefix="/api", tags=["config"])
+    app.include_router(skills.router, prefix="/api", tags=["skills"])
+    app.include_router(learning.router, prefix="/api", tags=["learning"])
+    app.include_router(user_config.router, prefix="/api", tags=["user"])
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

@@ -8,7 +8,7 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, Field
 
-from backend.agents.base.llm_client import LLMClient
+from backend.agents.base.llm_client import LLMClient, invoke_structured_output
 from backend.agents.intent.keywords import INTENT_KEYWORDS
 
 
@@ -136,8 +136,12 @@ class IntentRecognizer:
 
 请返回最匹配的意图类型、置信度和识别理由。"""
 
-        structured_llm = llm.with_structured_output(IntentResult)
-        result = await structured_llm.ainvoke(prompt)
+        from langchain_core.messages import HumanMessage
+        result = await invoke_structured_output(
+            llm,
+            [HumanMessage(content=prompt)],
+            IntentResult,
+        )
 
         if isinstance(result, IntentResult):
             return result

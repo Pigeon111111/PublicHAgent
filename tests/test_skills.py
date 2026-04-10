@@ -1,7 +1,6 @@
 """技能系统单元测试"""
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 

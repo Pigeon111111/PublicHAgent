@@ -82,7 +82,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="heatmap-chart" ref="chartRef" />
+  <div
+    ref="chartRef"
+    class="heatmap-chart"
+  />
 </template>
 
 <style scoped>

@@ -1,5 +1,6 @@
 venv/
 .venv/
+frontend/venv/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,6 +9,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+frontend/dist/
 downloads/
 eggs/
 .eggs/
@@ -36,8 +38,16 @@ wheels/
 dmypy.json
 
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+
+node_modules/
+frontend/node_modules/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 *.log
 *.tmp
@@ -48,3 +58,8 @@ Thumbs.db
 backend/config/.env
 data/
 logs/
+/package-lock.json
+
+# 加密密钥文件
+.encryption_key
+*.encryption_key

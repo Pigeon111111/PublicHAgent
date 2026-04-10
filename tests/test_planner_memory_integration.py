@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.agents.memory.manager import MemoryManager, UserProfile
+from backend.agents.memory.manager import MemoryManager
 from backend.agents.planner.planner_agent import PlannerAgent
 from backend.agents.planner.schemas import ExecutionPlan, ExecutionStep
 
@@ -227,8 +227,9 @@ class TestMemoryManagerWithPlannerWorkflow:
                 ]
             }
 
-            from backend.agents.memory.manager import MemoryConfig
             import tempfile
+
+            from backend.agents.memory.manager import MemoryConfig
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 config = MemoryConfig(

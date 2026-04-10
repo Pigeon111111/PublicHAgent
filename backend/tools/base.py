@@ -23,6 +23,9 @@ class BaseTool(ABC):
     - description: 工具描述
     - args_schema: 参数 Schema
     - run: 执行方法
+    - capability: 能力范围描述
+    - limitations: 限制条件
+    - applicable_scenarios: 适用场景
     """
 
     @property
@@ -42,6 +45,33 @@ class BaseTool(ABC):
     def args_schema(self) -> type[BaseModel]:
         """参数 Schema（Pydantic BaseModel）"""
         pass
+
+    @property
+    def capability(self) -> str:
+        """能力范围描述
+
+        描述该工具能够完成什么类型的任务，以及它的核心能力边界。
+        子类应该重写此属性以提供具体的能力描述。
+        """
+        return "基础工具能力"
+
+    @property
+    def limitations(self) -> list[str]:
+        """限制条件
+
+        描述该工具不能做什么，或者使用时需要注意的限制。
+        子类应该重写此属性以提供具体的限制条件。
+        """
+        return []
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        """适用场景
+
+        描述该工具最适合在什么场景下使用。
+        子类应该重写此属性以提供具体的适用场景。
+        """
+        return []
 
     @abstractmethod
     def run(self, **kwargs: Any) -> Any:

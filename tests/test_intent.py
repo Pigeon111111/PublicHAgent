@@ -1,6 +1,6 @@
 """意图识别模块单元测试"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

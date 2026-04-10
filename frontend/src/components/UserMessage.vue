@@ -7,7 +7,9 @@ defineProps<{
 <template>
   <div class="user-message">
     <div class="message-avatar">
-      <el-icon :size="24"><User /></el-icon>
+      <el-icon :size="24">
+        <User />
+      </el-icon>
     </div>
     <div class="message-content">
       <div class="message-bubble">

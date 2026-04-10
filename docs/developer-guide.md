@@ -374,3 +374,75 @@
 - **技术支持**：dev@pubhagent.com
 - **GitHub**：https://github.com/pubhagent/pubhagent
 - **文档**：https://docs.pubhagent.com
+## 10. 自学习数据分析闭环
+
+### 10.1 执行路径
+- 工作流入口为 `backend.core.workflow.AgentWorkflow.run()`。
+- 每次会话会创建 `data/sessions/{session_id}/input`、`workspace`、`output` 三个目录。
+- `SessionWorkspaceManager` 只接收 `data/uploads` 或项目 `data` 目录内的表格数据文件，并复制到会话 `input`。
+- `ExecutorAgent` 默认通过 `SafeCodeExecutor` 执行 Python 代码，脚本运行目录固定为会话 `workspace`，输出固定写入 `output`。
+- LLM 不可用或超时时，Planner 会生成本地回退计划，Executor 会执行通用 pandas/numpy/scipy 分析模板。
+
+### 10.2 安全边界
+- 受限执行器先执行静态安全检查，再运行脚本。
+- 运行时代码只允许读取会话 `input`、`workspace`、`output`，只允许写入 `workspace`、`output`。
+- 工具注册表默认注册内置工具，并通过 `ToolGuard` 限制路径、网络、子进程和敏感内容。
+- 当前本地受限执行器不是强隔离容器；Docker 不可用时它提供可运行的安全边界，生产环境仍应优先启用容器沙箱。
+
+### 10.3 自学习 Skill
+- 每次分析结束后，Reflection 会验证 `analysis_report.md` 和 `analysis_result.json` 是否存在且非空。
+- 通过验证后，系统会把用户请求、计划、执行代码、输出、错误和验证结果保存到 `data/trajectories/{trajectory_id}.json`。
+- 成功轨迹会生成 `backend/tools/skills/learned_*/SKILL.md`，并立即注册到 SkillRegistry。
+- 后续相似请求会优先检索 `learned-analysis` 分类 Skill，作为 Planner 回退计划的复用提示。
+
+### 10.4 查询接口
+- `GET /api/learning/trajectories`：查看最近学习轨迹。
+- `GET /api/learning/trajectories/{trajectory_id}`：查看单条轨迹。
+- `GET /api/learning/skills`：查看自动学习生成的 Skill。
+
+### 10.5 验证命令
+```powershell
+pytest tests\test_self_learning_workflow.py -q
+pytest tests\test_executor.py tests\test_workflow.py tests\test_sandbox.py tests\test_sandbox_security.py tests\test_skills.py tests\test_tools.py tests\test_self_learning_workflow.py -q
+ruff check backend tests
+mypy backend
+```
+
+## 11. 可观察与可中断执行
+
+### 11.1 后端运行控制
+
+- WebSocket 入口：`backend/api/websocket.py`。
+- 每个 `SessionContext` 维护当前后台任务、运行状态、最近错误和最近 200 条事件。
+- 用户消息不会再阻塞 WebSocket 接收循环；后端会创建后台任务执行 `process_user_message()`，接收循环可以继续处理 `interrupt`、`ping` 和后续控制消息。
+- `GET /ws/{session_id}/status` 返回会话快照，包含 `running`、`interrupted`、`last_error`、`events` 和连接信息。
+
+### 11.2 中断链路
+
+- 前端停止按钮发送 `{ "type": "interrupt" }`。
+- `SessionContext.interrupt()` 设置中断标记并取消当前后台任务。
+- `AgentWorkflow` 接收 `cancellation_checker`，在 intent、planner、executor、reflection 和执行循环边界检查中断。
+- `ExecutorAgent` 使用 `asyncio.to_thread()` 调用同步代码执行器，避免分析脚本阻塞 WebSocket 事件循环。
+- `SafeCodeExecutor` 使用 `subprocess.Popen()` 轮询执行状态；发现中断或超时会杀掉子进程并返回失败结果。
+
+### 11.3 前端观察能力
+
+- 页面入口：`frontend/src/views/ChatView.vue`。
+- 展示组件：`frontend/src/components/ChatWindow.vue`。
+- WebSocket 客户端：`frontend/src/services/websocket.ts`。
+- Pinia 状态：`frontend/src/stores/index.ts`。
+- 聊天页右侧展示连接状态、任务状态、进度条、运行日志和错误信息，便于用户观察任务是否卡住、是否已中断、最终是否生成结果。
+
+### 11.4 前端工具链
+
+前端已补齐 ESLint 工具链并升级到无已知中高危审计项的构建依赖：
+
+```powershell
+cd frontend
+npm run lint
+npm run typecheck
+npm run build
+npm audit --audit-level=moderate
+```
+
+Vite 8 使用 Rolldown，`manualChunks` 需要函数形式；项目同时维护 `vite.config.ts` 和 `vite.config.js`，两者的分包配置需保持一致。

@@ -9,7 +9,7 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from backend.agents.base.llm_client import LLMClient
+from backend.agents.base.llm_client import LLMClient, invoke_structured_output
 from backend.agents.executor.schemas import ExecutionResult
 from backend.agents.planner.schemas import ExecutionPlan
 from backend.agents.reflection.schemas import (
@@ -110,11 +110,14 @@ class ReflectionAgent:
 
 请评估执行结果的质量，并给出改进建议。"""
 
-        structured_llm = llm.with_structured_output(ReflectionResult)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content=self.EVALUATION_PROMPT),
-            HumanMessage(content=user_message),
-        ])
+        result = await invoke_structured_output(
+            llm,
+            [
+                SystemMessage(content=self.EVALUATION_PROMPT),
+                HumanMessage(content=user_message),
+            ],
+            ReflectionResult,
+        )
 
         if isinstance(result, ReflectionResult):
             result.quality_level = self._get_quality_level(result.quality_score)
@@ -152,11 +155,14 @@ class ReflectionAgent:
             status="成功" if execution_result.success else f"失败: {execution_result.error}",
         )
 
-        structured_llm = llm.with_structured_output(StepEvaluation)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content="你是一个步骤评估专家。"),
-            HumanMessage(content=user_message),
-        ])
+        result = await invoke_structured_output(
+            llm,
+            [
+                SystemMessage(content="你是一个步骤评估专家。"),
+                HumanMessage(content=user_message),
+            ],
+            StepEvaluation,
+        )
 
         if isinstance(result, StepEvaluation):
             return result
@@ -193,11 +199,14 @@ class ReflectionAgent:
 
 请按照正确性、完整性、效率、清晰度四个维度评估执行质量。"""
 
-        structured_llm = llm.with_structured_output(EvaluationCriteria)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content="你是一个质量评估专家。请按照多个维度评估执行质量。"),
-            HumanMessage(content=user_message),
-        ])
+        result = await invoke_structured_output(
+            llm,
+            [
+                SystemMessage(content="你是一个质量评估专家。请按照多个维度评估执行质量。"),
+                HumanMessage(content=user_message),
+            ],
+            EvaluationCriteria,
+        )
 
         if isinstance(result, EvaluationCriteria):
             return result

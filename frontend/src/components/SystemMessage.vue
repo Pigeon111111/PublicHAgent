@@ -6,7 +6,9 @@ defineProps<{
 
 <template>
   <div class="system-message">
-    <el-icon :size="16"><WarningFilled /></el-icon>
+    <el-icon :size="16">
+      <WarningFilled />
+    </el-icon>
     <span>{{ content }}</span>
   </div>
 </template>

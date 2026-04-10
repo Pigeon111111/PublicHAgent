@@ -1,6 +1,7 @@
 import type { WebSocketMessage } from '@/types'
 
 type MessageHandler = (message: WebSocketMessage) => void
+type ConnectionHandler = (connected: boolean) => void
 
 let ws: WebSocket | null = null
 let reconnectAttempts = 0
@@ -8,19 +9,39 @@ const maxReconnectAttempts = 5
 const reconnectDelay = 3000
 let heartbeatInterval: number | null = null
 let messageHandler: MessageHandler | null = null
+let connectionHandler: ConnectionHandler | null = null
+let manualClose = false
 
-export function connectWebSocket(sessionId: string, handler: MessageHandler): Promise<void> {
+function buildWebSocketUrl(sessionId: string): string {
+  const configuredUrl = import.meta.env.VITE_WS_BASE_URL as string | undefined
+  if (configuredUrl) {
+    return `${configuredUrl.replace(/\/$/, '')}/ws/${sessionId}`
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/${sessionId}`
+}
+
+export function connectWebSocket(
+  sessionId: string,
+  handler: MessageHandler,
+  onConnectionChange?: ConnectionHandler,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    const wsUrl = `${protocol}//${host}/ws/${sessionId}`
-
+    manualClose = false
     messageHandler = handler
-    ws = new WebSocket(wsUrl)
+    connectionHandler = onConnectionChange || null
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      resolve()
+      return
+    }
+
+    ws = new WebSocket(buildWebSocketUrl(sessionId))
 
     ws.onopen = () => {
-      console.log('WebSocket 连接成功')
       reconnectAttempts = 0
+      connectionHandler?.(true)
       startHeartbeat()
       resolve()
     }
@@ -28,9 +49,7 @@ export function connectWebSocket(sessionId: string, handler: MessageHandler): Pr
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WebSocketMessage
-        if (messageHandler) {
-          messageHandler(message)
-        }
+        messageHandler?.(message)
       } catch (error) {
         console.error('解析 WebSocket 消息失败:', error)
       }
@@ -42,9 +61,12 @@ export function connectWebSocket(sessionId: string, handler: MessageHandler): Pr
     }
 
     ws.onclose = () => {
-      console.log('WebSocket 连接关闭')
       stopHeartbeat()
-      attemptReconnect(sessionId)
+      connectionHandler?.(false)
+      ws = null
+      if (!manualClose) {
+        attemptReconnect(sessionId)
+      }
     }
   })
 }
@@ -55,17 +77,16 @@ function attemptReconnect(sessionId: string) {
     return
   }
 
-  reconnectAttempts++
-  console.log(`尝试重连 (${reconnectAttempts}/${maxReconnectAttempts})...`)
-
-  setTimeout(() => {
-    if (messageHandler) {
-      connectWebSocket(sessionId, messageHandler).catch(console.error)
+  reconnectAttempts += 1
+  window.setTimeout(() => {
+    if (messageHandler && !manualClose) {
+      connectWebSocket(sessionId, messageHandler, connectionHandler || undefined).catch(console.error)
     }
   }, reconnectDelay)
 }
 
 function startHeartbeat() {
+  stopHeartbeat()
   heartbeatInterval = window.setInterval(() => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'ping' }))
@@ -81,27 +102,31 @@ function stopHeartbeat() {
 }
 
 export function disconnectWebSocket() {
+  manualClose = true
   stopHeartbeat()
   if (ws) {
     ws.close()
     ws = null
   }
   messageHandler = null
+  connectionHandler = null
 }
 
-export function sendMessage(message: Record<string, unknown>) {
+export function sendMessage(message: Record<string, unknown>): boolean {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       ...message,
       timestamp: new Date().toISOString(),
     }))
-  } else {
-    console.error('WebSocket 未连接')
+    return true
   }
+
+  console.error('WebSocket 未连接')
+  return false
 }
 
-export function interruptExecution() {
-  sendMessage({ type: 'interrupt' })
+export function interruptExecution(): boolean {
+  return sendMessage({ type: 'interrupt' })
 }
 
 export function isConnected(): boolean {

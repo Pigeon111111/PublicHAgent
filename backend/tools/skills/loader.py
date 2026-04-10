@@ -9,7 +9,13 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-from backend.tools.skills.models import Skill, SkillExample, SkillMetadata, SkillParameter
+from backend.tools.skills.models import (
+    Skill,
+    SkillCapability,
+    SkillExample,
+    SkillMetadata,
+    SkillParameter,
+)
 
 
 class SkillLoaderError(Exception):
@@ -148,6 +154,7 @@ class SkillLoader:
             Skill 对象
         """
         metadata = SkillMetadata(name="unknown")
+        capability = SkillCapability()
         parameters: list[SkillParameter] = []
         prompt_template = ""
         examples: list[SkillExample] = []
@@ -158,6 +165,9 @@ class SkillLoader:
             sections = self._parse_markdown_sections(remaining)
         else:
             sections = self._parse_markdown_sections(content)
+
+        if "capability" in sections:
+            capability = self._parse_capability_section(sections["capability"])
 
         if "parameters" in sections:
             parameters = self._parse_parameters_section(sections["parameters"])
@@ -173,6 +183,7 @@ class SkillLoader:
 
         return Skill(
             metadata=metadata,
+            capability=capability,
             parameters=parameters,
             prompt_template=prompt_template,
             examples=examples,
@@ -211,6 +222,8 @@ class SkillLoader:
         current_content: list[str] = []
 
         section_mapping = {
+            "能力描述": "capability",
+            "capability": "capability",
             "参数": "parameters",
             "parameters": "parameters",
             "提示词模板": "prompt_template",
@@ -258,6 +271,41 @@ class SkillLoader:
                     parameters.append(param)
 
         return parameters
+
+    def _parse_capability_section(self, content: str) -> SkillCapability:
+        """解析能力描述章节"""
+        capability_text = ""
+        limitations: list[str] = []
+        applicable_scenarios: list[str] = []
+
+        current_section = None
+
+        for line in content.split("\n"):
+            line_stripped = line.strip()
+
+            if line_stripped.startswith("**能力范围**") or line_stripped.startswith("能力范围"):
+                current_section = "capability"
+                if ":" in line_stripped:
+                    capability_text = line_stripped.split(":", 1)[1].strip()
+            elif line_stripped.startswith("**限制条件**") or line_stripped.startswith("限制条件"):
+                current_section = "limitations"
+            elif line_stripped.startswith("**适用场景**") or line_stripped.startswith("适用场景"):
+                current_section = "scenarios"
+            elif current_section == "capability" and not capability_text:
+                if line_stripped and not line_stripped.startswith("#"):
+                    capability_text = line_stripped
+            elif current_section == "limitations":
+                if line_stripped.startswith("- ") or line_stripped.startswith("* "):
+                    limitations.append(line_stripped[2:])
+            elif current_section == "scenarios":
+                if line_stripped.startswith("- ") or line_stripped.startswith("* "):
+                    applicable_scenarios.append(line_stripped[2:])
+
+        return SkillCapability(
+            capability=capability_text,
+            limitations=limitations,
+            applicable_scenarios=applicable_scenarios,
+        )
 
     def _parse_parameter_line(self, line: str) -> SkillParameter | None:
         """解析参数行"""

@@ -3,10 +3,7 @@
 测试文件上传模块的完整功能。
 """
 
-import tempfile
 from io import BytesIO
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,17 +27,17 @@ class TestFileUploadE2E:
 张三,28,男,15000
 李四,35,女,22000
 王五,42,男,18000
-""".encode("utf-8")
+""".encode()
 
     @pytest.fixture
     def sample_json(self) -> bytes:
         """示例 JSON 文件"""
-        return """{"name": "张三", "age": 28, "gender": "男"}""".encode("utf-8")
+        return """{"name": "张三", "age": 28, "gender": "男"}""".encode()
 
     @pytest.fixture
     def sample_txt(self) -> bytes:
         """示例文本文件"""
-        return "这是一个测试文本文件".encode("utf-8")
+        return "这是一个测试文本文件".encode()
 
     def test_upload_csv_file(self, client: TestClient, sample_csv: bytes) -> None:
         """测试上传 CSV 文件"""
@@ -198,7 +195,7 @@ class TestFileValidation:
 
     def test_valid_csv_structure(self, client: TestClient) -> None:
         """测试有效 CSV 结构"""
-        valid_csv = "name,age\n张三,28\n李四,35".encode("utf-8")
+        valid_csv = "name,age\n张三,28\n李四,35".encode()
         files = {"file": ("valid.csv", BytesIO(valid_csv), "text/csv")}
         response = client.post("/api/upload", files=files)
         assert response.status_code == 201
@@ -212,7 +209,7 @@ class TestFileValidation:
 
     def test_special_characters_in_content(self, client: TestClient) -> None:
         """测试内容中的特殊字符"""
-        special_csv = "name,value\n测试,<script>alert(1)</script>\n特殊,字符".encode("utf-8")
+        special_csv = "name,value\n测试,<script>alert(1)</script>\n特殊,字符".encode()
         files = {"file": ("special.csv", BytesIO(special_csv), "text/csv")}
         response = client.post("/api/upload", files=files)
         assert response.status_code == 201

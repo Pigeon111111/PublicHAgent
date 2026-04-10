@@ -13,7 +13,7 @@ from backend.tools.skills.models import Skill
 class SkillRegistry:
     """技能注册表
 
-    管理所有技能的注册、查询和加载。
+    管理所有技能的注册、查询、加载和启用/禁用状态。
     """
 
     def __init__(self, skills_dir: str | Path | None = None) -> None:
@@ -24,6 +24,7 @@ class SkillRegistry:
         """
         self._loader = SkillLoader(skills_dir)
         self._skills: dict[str, Skill] = {}
+        self._disabled_skills: set[str] = set()
         self._loaded = False
 
     def load_all(self, force_reload: bool = False) -> list[str]:
@@ -208,6 +209,49 @@ class SkillRegistry:
         self._skills.clear()
         self._loaded = False
         self._loader.clear_cache()
+
+    def is_enabled(self, skill_name: str) -> bool:
+        """检查技能是否启用
+
+        Args:
+            skill_name: 技能名称
+
+        Returns:
+            是否启用
+        """
+        if not self._loaded:
+            self.load_all()
+        return skill_name not in self._disabled_skills and skill_name in self._skills
+
+    def enable(self, skill_name: str) -> None:
+        """启用技能
+
+        Args:
+            skill_name: 技能名称
+
+        Raises:
+            KeyError: 技能不存在
+        """
+        if not self._loaded:
+            self.load_all()
+        if skill_name not in self._skills:
+            raise KeyError(f"技能不存在: {skill_name}")
+        self._disabled_skills.discard(skill_name)
+
+    def disable(self, skill_name: str) -> None:
+        """禁用技能
+
+        Args:
+            skill_name: 技能名称
+
+        Raises:
+            KeyError: 技能不存在
+        """
+        if not self._loaded:
+            self.load_all()
+        if skill_name not in self._skills:
+            raise KeyError(f"技能不存在: {skill_name}")
+        self._disabled_skills.add(skill_name)
 
 
 _global_registry: SkillRegistry | None = None

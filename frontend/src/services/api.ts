@@ -109,6 +109,117 @@ export async function updateSandboxConfig(config: SandboxConfig): Promise<Sandbo
   return api.put('/config/sandbox', config)
 }
 
+// Skills API
+export async function getSkills(): Promise<{ success: boolean; skills: Array<{ name: string; description: string; enabled: boolean }>; total: number }> {
+  return api.get('/skills')
+}
+
+export async function getSkill(skillName: string): Promise<{ success: boolean; skill: Record<string, unknown> }> {
+  return api.get(`/skills/${skillName}`)
+}
+
+export async function enableSkill(skillName: string): Promise<{ success: boolean; message: string }> {
+  return api.post(`/skills/${skillName}/enable`)
+}
+
+export async function disableSkill(skillName: string): Promise<{ success: boolean; message: string }> {
+  return api.post(`/skills/${skillName}/disable`)
+}
+
+export async function deleteSkill(skillName: string): Promise<{ success: boolean; message: string }> {
+  return api.delete(`/skills/${skillName}`)
+}
+
+// User Config API
+export async function setApiKey(provider: string, apiKey: string): Promise<{ success: boolean; message: string }> {
+  return api.put('/user/api-key', { provider, api_key: apiKey })
+}
+
+export async function getApiKey(provider: string): Promise<{ success: boolean; has_key: boolean; masked_key: string | null }> {
+  return api.get(`/user/api-key/${provider}`)
+}
+
+export async function deleteApiKey(provider: string): Promise<{ success: boolean; message: string }> {
+  return api.delete(`/user/api-key/${provider}`)
+}
+
+// Custom Models API
+export interface CustomModel {
+  name: string
+  model_id: string
+  base_url: string
+  has_api_key: boolean
+  max_tokens: number
+  temperature: number
+  supports_streaming: boolean
+  supports_function_calling: boolean
+}
+
+export interface CustomModelCreate {
+  model_name: string
+  name: string
+  model_id: string
+  base_url: string
+  api_key?: string
+  max_tokens?: number
+  temperature?: number
+  supports_streaming?: boolean
+  supports_function_calling?: boolean
+}
+
+export interface CustomModelUpdate {
+  name?: string
+  model_id?: string
+  base_url?: string
+  api_key?: string
+  max_tokens?: number
+  temperature?: number
+  supports_streaming?: boolean
+  supports_function_calling?: boolean
+}
+
+export interface AvailableModel {
+  name: string
+  model_id: string
+  provider: string
+  type: 'preset' | 'custom'
+  model_name?: string
+  base_url?: string
+  has_api_key?: boolean
+}
+
+export async function listCustomModels(): Promise<{ success: boolean; models: Record<string, CustomModel>; total: number }> {
+  return api.get('/user/custom-models')
+}
+
+export async function createCustomModel(data: CustomModelCreate): Promise<{ success: boolean; message: string; model: Record<string, unknown> }> {
+  return api.post('/user/custom-models', data)
+}
+
+export async function getCustomModel(modelName: string): Promise<{ success: boolean; model: CustomModel }> {
+  return api.get(`/user/custom-models/${modelName}`)
+}
+
+export async function updateCustomModel(modelName: string, data: CustomModelUpdate): Promise<{ success: boolean; message: string }> {
+  return api.put(`/user/custom-models/${modelName}`, data)
+}
+
+export async function deleteCustomModel(modelName: string): Promise<{ success: boolean; message: string }> {
+  return api.delete(`/user/custom-models/${modelName}`)
+}
+
+export async function setModelSelection(modelType: string, modelName: string): Promise<{ success: boolean; message: string }> {
+  return api.put('/user/model-selection', { model_type: modelType, model_name: modelName })
+}
+
+export async function getModelSelection(): Promise<{ success: boolean; planner_model: string; executor_model: string }> {
+  return api.get('/user/model-selection')
+}
+
+export async function getAvailableModels(): Promise<{ success: boolean; models: AvailableModel[]; total: number }> {
+  return api.get('/user/available-models')
+}
+
 export async function healthCheck(): Promise<{ status: string; version: string }> {
   return axios.get('/health').then((res) => res.data)
 }

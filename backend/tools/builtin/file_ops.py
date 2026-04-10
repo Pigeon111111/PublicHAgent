@@ -71,6 +71,26 @@ class ReadFileTool(BaseTool):
         return "读取指定文件的内容"
 
     @property
+    def capability(self) -> str:
+        return "读取文本文件内容，支持指定编码格式"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "只能读取文本文件，不支持二进制文件",
+            "文件大小受内存限制",
+            "不支持远程文件路径"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "读取配置文件、日志文件等文本内容",
+            "查看小型文本文件",
+            "读取代码文件"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return ReadFileArgs
 
@@ -102,6 +122,26 @@ class WriteFileTool(BaseTool):
         return "将内容写入指定文件"
 
     @property
+    def capability(self) -> str:
+        return "写入文本内容到文件，支持覆盖和追加模式"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "只能写入文本内容",
+            "不自动备份原有文件",
+            "需要文件系统写入权限"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "保存分析结果到文件",
+            "创建配置文件",
+            "写入日志文件"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return WriteFileArgs
 
@@ -128,6 +168,26 @@ class EditFileTool(BaseTool):
     @property
     def description(self) -> str:
         return "编辑文件，搜索并替换指定内容"
+
+    @property
+    def capability(self) -> str:
+        return "在文件中搜索并替换指定的文本内容"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "只能替换第一个匹配项",
+            "不支持正则表达式",
+            "需要精确匹配要替换的内容"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "修改配置文件中的特定配置项",
+            "更新代码文件中的特定代码",
+            "批量修改文本文件内容"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:
@@ -172,6 +232,27 @@ class ReadDataFileTool(BaseTool):
     @property
     def description(self) -> str:
         return "读取数据文件（CSV、Excel、JSON），返回数据摘要和前几行数据"
+
+    @property
+    def capability(self) -> str:
+        return "读取结构化数据文件（CSV、Excel、JSON），返回数据预览和基本信息"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "大文件可能导致内存问题",
+            "Excel 文件需要 openpyxl 库支持",
+            "不支持加密的 Excel 文件",
+            "不支持嵌套的 JSON 结构"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "读取数据分析所需的原始数据",
+            "查看数据文件结构和内容预览",
+            "导入公共卫生监测数据"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:
@@ -243,6 +324,26 @@ class WriteDataFileTool(BaseTool):
         return "将数据写入文件（CSV、Excel、JSON）"
 
     @property
+    def capability(self) -> str:
+        return "将结构化数据写入文件，支持 CSV、Excel、JSON 格式"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "数据必须是字典列表格式",
+            "大文件写入可能较慢",
+            "不支持追加模式"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "保存处理后的分析结果",
+            "导出数据报告",
+            "数据格式转换"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return WriteDataFileArgs
 
@@ -303,6 +404,26 @@ class ListDirectoryTool(BaseTool):
     @property
     def description(self) -> str:
         return "列出目录中的文件和子目录"
+
+    @property
+    def capability(self) -> str:
+        return "列出指定目录下的文件和子目录，支持通配符匹配和递归遍历"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "需要目录读取权限",
+            "大量文件时可能较慢",
+            "不支持远程目录"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "浏览数据文件目录结构",
+            "查找特定类型的文件",
+            "了解项目文件组织"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:

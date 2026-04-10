@@ -11,6 +11,11 @@ from backend.sandbox.manager import (
     SandboxManager,
     get_sandbox_manager,
 )
+from backend.sandbox.safe_executor import (
+    SafeCodeExecutor,
+    SafeExecutionContext,
+    SafeExecutionResult,
+)
 
 __all__ = [
     "ContainerInfo",
@@ -19,4 +24,7 @@ __all__ = [
     "SandboxConfig",
     "SandboxManager",
     "get_sandbox_manager",
+    "SafeCodeExecutor",
+    "SafeExecutionContext",
+    "SafeExecutionResult",
 ]

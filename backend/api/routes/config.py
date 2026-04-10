@@ -26,8 +26,6 @@ class AgentConfig(BaseModel):
 
     max_iterations: int = Field(default=10, ge=1, le=50)
     reflection_attempts: int = Field(default=3, ge=1, le=10)
-    planner_model: str = "gpt-4o"
-    executor_model: str = "gpt-4o-mini"
 
 
 class SandboxConfig(BaseModel):

@@ -3,19 +3,13 @@
 测试从用户上传文件到获取分析结果的完整流程。
 """
 
-import asyncio
-import json
-import tempfile
 from io import BytesIO
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from backend.api.main import create_app
-from backend.api.protocol import MessageType
 
 
 class TestFullAnalysisFlow:
@@ -42,7 +36,7 @@ class TestFullAnalysisFlow:
 王五,42,男,18000,广州
 赵六,31,女,20000,深圳
 钱七,25,男,12000,杭州
-""".encode("utf-8")
+""".encode()
 
     @pytest.fixture
     def sample_excel_content(self) -> bytes:

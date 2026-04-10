@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Message, Conversation, FileInfo, AnalysisResult, ChartData } from '@/types'
+import type { Message, Conversation, FileInfo, AnalysisResult, ChartData, TaskEvent } from '@/types'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<Message[]>([])
@@ -11,6 +11,9 @@ export const useChatStore = defineStore('chat', () => {
   const currentProgress = ref(0)
   const currentStage = ref('')
   const streamingContent = ref('')
+  const taskEvents = ref<TaskEvent[]>([])
+  const lastError = ref('')
+  const interruptRequested = ref(false)
 
   const messageCount = computed(() => messages.value.length)
 
@@ -25,6 +28,9 @@ export const useChatStore = defineStore('chat', () => {
   function clearMessages() {
     messages.value = []
     streamingContent.value = ''
+    taskEvents.value = []
+    lastError.value = ''
+    interruptRequested.value = false
   }
 
   function setConnected(connected: boolean) {
@@ -36,12 +42,33 @@ export const useChatStore = defineStore('chat', () => {
     if (!processing) {
       currentProgress.value = 0
       currentStage.value = ''
+      interruptRequested.value = false
     }
   }
 
   function updateProgress(progress: number, stage: string) {
     currentProgress.value = progress
     currentStage.value = stage
+  }
+
+  function addTaskEvent(event: TaskEvent) {
+    taskEvents.value.push(event)
+    if (taskEvents.value.length > 200) {
+      taskEvents.value = taskEvents.value.slice(-200)
+    }
+  }
+
+  function clearTaskEvents() {
+    taskEvents.value = []
+    lastError.value = ''
+  }
+
+  function setLastError(error: string) {
+    lastError.value = error
+  }
+
+  function setInterruptRequested(requested: boolean) {
+    interruptRequested.value = requested
   }
 
   function appendStreamContent(content: string) {
@@ -70,12 +97,19 @@ export const useChatStore = defineStore('chat', () => {
     currentProgress,
     currentStage,
     streamingContent,
+    taskEvents,
+    lastError,
+    interruptRequested,
     messageCount,
     addMessage,
     clearMessages,
     setConnected,
     setProcessing,
     updateProgress,
+    addTaskEvent,
+    clearTaskEvents,
+    setLastError,
+    setInterruptRequested,
     appendStreamContent,
     clearStreamContent,
     setCurrentConversation,

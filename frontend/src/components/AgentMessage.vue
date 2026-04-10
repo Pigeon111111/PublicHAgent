@@ -16,12 +16,20 @@ const renderedContent = computed(() => {
 </script>
 
 <template>
-  <div class="agent-message" :class="{ streaming: isStreaming }">
+  <div
+    class="agent-message"
+    :class="{ streaming: isStreaming }"
+  >
     <div class="message-avatar">
-      <el-icon :size="24"><Robot /></el-icon>
+      <el-icon :size="24">
+        <Robot />
+      </el-icon>
     </div>
     <div class="message-content">
-      <div class="message-bubble" v-html="renderedContent" />
+      <div
+        class="message-bubble"
+        v-html="renderedContent"
+      />
     </div>
   </div>
 </template>

@@ -26,7 +26,10 @@ const menuItems = [
         @click="router.push(item.path)"
       >
         <div class="menu-content">
-          <el-icon :size="48" class="menu-icon">
+          <el-icon
+            :size="48"
+            class="menu-icon"
+          >
             <component :is="item.icon" />
           </el-icon>
           <h3>{{ item.title }}</h3>

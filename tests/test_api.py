@@ -6,20 +6,15 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api.main import APIError, AppSettings, create_app, get_settings
+from backend.api.main import APIError, AppSettings, create_app
 from backend.api.protocol import (
-    AgentMessage,
-    ErrorMessage,
     MessageFactory,
     MessageType,
-    ProgressMessage,
     ProgressTracker,
-    StatusMessage,
     UserMessage,
     deserialize_message,
     serialize_message,
@@ -303,13 +298,13 @@ class TestFileRoutes:
         """测试空文件列表"""
         empty_dir = tmp_path / "uploads"
         empty_dir.mkdir()
-        
+
         from backend.api.deps import get_upload_dir
         from backend.api.main import create_app
-        
+
         app = create_app()
         app.dependency_overrides[get_upload_dir] = lambda: empty_dir
-        
+
         client = TestClient(app)
         response = client.get("/api/files")
         assert response.status_code == 200

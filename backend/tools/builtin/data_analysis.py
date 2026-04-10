@@ -75,6 +75,27 @@ class DataCleaningTool(BaseTool):
         return "数据清洗：处理缺失值、重复值、异常值等"
 
     @property
+    def capability(self) -> str:
+        return "执行数据清洗操作，包括删除/填充缺失值、删除重复值、移除异常值（IQR/Z-score 方法）"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "不支持复杂的数据清洗规则",
+            "异常值检测仅支持 IQR 和 Z-score 方法",
+            "填充方法有限，不支持插值"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "数据预处理阶段",
+            "处理公共卫生监测数据中的缺失值",
+            "清理重复记录",
+            "识别和处理异常值"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return DataCleaningArgs
 
@@ -195,6 +216,28 @@ class StatisticalAnalysisTool(BaseTool):
     @property
     def description(self) -> str:
         return "统计分析：描述性统计、相关性分析、假设检验等"
+
+    @property
+    def capability(self) -> str:
+        return "执行基础统计分析，包括描述性统计、相关性分析、假设检验（t检验/ANOVA/卡方）、正态性检验"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "仅支持基础统计检验",
+            "不支持非参数检验",
+            "不支持多变量方差分析",
+            "假设检验需要满足前提条件（如正态性）"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "探索性数据分析",
+            "组间差异比较",
+            "变量相关性探索",
+            "数据分布特征分析"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:
@@ -364,6 +407,27 @@ class DataTransformationTool(BaseTool):
     @property
     def description(self) -> str:
         return "数据转换：标准化、归一化、编码、分箱等"
+
+    @property
+    def capability(self) -> str:
+        return "执行数据转换操作，包括归一化、标准化、对数转换、独热编码、标签编码、分箱"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "不支持自定义转换函数",
+            "分箱仅支持等宽分箱",
+            "编码后不保留原始映射关系"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "机器学习模型数据预处理",
+            "特征工程",
+            "数据标准化处理",
+            "分类变量编码"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:

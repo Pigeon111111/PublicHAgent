@@ -131,8 +131,11 @@ class TestLLMClient:
         """测试 API Key 未设置"""
         LLMClient.reset()
         client = LLMClient(config_file)
-        with pytest.raises(LLMClientError, match="API Key 未配置"):
-            client.get_llm("test-model")
+        # Mock 用户配置存储返回空配置
+        with patch("backend.agents.base.llm_client.get_user_config_storage") as mock_storage:
+            mock_storage.return_value.get.return_value = None
+            with pytest.raises(LLMClientError, match="API Key 未配置"):
+                client.get_llm("test-model")
 
     @patch.dict(os.environ, {"TEST_API_KEY": "test-key"})
     @patch("backend.agents.base.llm_client.ChatOpenAI")

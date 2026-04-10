@@ -18,6 +18,17 @@ export interface Message {
   timestamp: string
 }
 
+export interface TaskEvent {
+  id: string
+  type: 'status' | 'progress' | 'agent' | 'error'
+  title: string
+  message: string
+  timestamp: string
+  progress?: number
+  stage?: string
+  details?: Record<string, unknown>
+}
+
 export interface Conversation {
   id: string
   title: string
@@ -92,7 +103,17 @@ export interface ErrorMessage extends BaseMessage {
   details: Record<string, unknown>
 }
 
-export type WebSocketMessage = UserMessage | AgentMessage | StatusMessage | ProgressMessage | ErrorMessage
+export interface InterruptMessage extends Partial<BaseMessage> {
+  type: 'interrupt'
+}
+
+export type WebSocketMessage =
+  | UserMessage
+  | AgentMessage
+  | StatusMessage
+  | ProgressMessage
+  | ErrorMessage
+  | InterruptMessage
 
 export interface AppConfig {
   name: string
@@ -103,8 +124,6 @@ export interface AppConfig {
 export interface AgentConfig {
   max_iterations: number
   reflection_attempts: number
-  planner_model: string
-  executor_model: string
 }
 
 export interface SandboxConfig {
@@ -152,4 +171,49 @@ export interface AnalysisResult {
   charts: ChartData[]
   tables: Record<string, unknown>[]
   created_at: string
+}
+
+// 自定义模型相关类型
+export interface CustomModel {
+  name: string
+  model_id: string
+  base_url: string
+  has_api_key: boolean
+  max_tokens: number
+  temperature: number
+  supports_streaming: boolean
+  supports_function_calling: boolean
+}
+
+export interface CustomModelCreate {
+  model_name: string
+  name: string
+  model_id: string
+  base_url: string
+  api_key?: string
+  max_tokens?: number
+  temperature?: number
+  supports_streaming?: boolean
+  supports_function_calling?: boolean
+}
+
+export interface CustomModelUpdate {
+  name?: string
+  model_id?: string
+  base_url?: string
+  api_key?: string
+  max_tokens?: number
+  temperature?: number
+  supports_streaming?: boolean
+  supports_function_calling?: boolean
+}
+
+export interface AvailableModel {
+  name: string
+  model_id: string
+  provider: string
+  type: 'preset' | 'custom'
+  model_name?: string
+  base_url?: string
+  has_api_key?: boolean
 }

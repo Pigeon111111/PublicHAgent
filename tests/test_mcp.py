@@ -6,13 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.tools.mcp.adapter import MCPToolAdapter, adapt_mcp_tool
 from backend.tools.mcp.client import (
     MCPClient,
     MCPClientError,
     MCPConfig,
     MCPServerConfig,
 )
-from backend.tools.mcp.adapter import MCPToolAdapter, adapt_mcp_tool
 
 
 class TestMCPServerConfig:
@@ -100,9 +100,11 @@ class TestMCPClient:
 
     def test_init_without_deps_raises_error(self) -> None:
         """测试依赖未安装时抛出错误"""
-        with patch("backend.tools.mcp.client.MultiServerMCPClient", None):
-            with pytest.raises(MCPClientError, match="langchain-mcp-adapters 未安装"):
-                MCPClient()
+        with (
+            patch("backend.tools.mcp.client.MultiServerMCPClient", None),
+            pytest.raises(MCPClientError, match="langchain-mcp-adapters 未安装"),
+        ):
+            MCPClient()
 
     def test_init_with_config(self) -> None:
         """测试使用配置初始化"""
@@ -177,9 +179,9 @@ class TestMCPToolAdapter:
         mock_tool.args_schema = None
         mock_tool.func = lambda x: x
 
-        with patch("backend.tools.mcp.adapter.StructuredTool") as MockStructuredTool:
+        with patch("backend.tools.mcp.adapter.StructuredTool") as mock_structured_tool_class:
             mock_structured_tool = MagicMock()
-            MockStructuredTool.return_value = mock_structured_tool
+            mock_structured_tool_class.return_value = mock_structured_tool
 
             result = MCPToolAdapter.adapt_tool(mock_tool)
             assert result == mock_structured_tool

@@ -61,6 +61,26 @@ class ReportGenerationTool(BaseTool):
         return "生成 Markdown 或 HTML 格式的报告"
 
     @property
+    def capability(self) -> str:
+        return "生成结构化的分析报告，支持 Markdown 和 HTML 格式，可包含目录、章节、数据摘要"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "不支持 PDF 格式输出",
+            "不支持复杂的表格格式",
+            "HTML 样式定制能力有限"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "生成数据分析报告",
+            "创建研究文档",
+            "导出分析结果摘要"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return ReportGenerationArgs
 
@@ -241,6 +261,26 @@ class DataReportTool(BaseTool):
     @property
     def description(self) -> str:
         return "自动分析数据并生成数据分析报告"
+
+    @property
+    def capability(self) -> str:
+        return "自动生成数据分析报告，包含数据概览、描述性统计、缺失值分析、分布分析"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "仅支持基础统计分析",
+            "不包含高级统计检验",
+            "图表需要单独生成"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "快速生成数据概览报告",
+            "数据质量初步评估",
+            "探索性数据分析文档化"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:

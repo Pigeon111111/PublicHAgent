@@ -1,7 +1,6 @@
 """安全守卫模块单元测试"""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel, Field

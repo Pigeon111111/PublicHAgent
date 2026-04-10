@@ -3,14 +3,16 @@
 提供计划生成、工具选择、Replan 能力。
 使用 with_structured_output 确保结构化输出。
 集成 MemoryManager 实现记忆注入。
+支持能力缺口识别和 Skill 创建/更新建议。
 """
 
+import asyncio
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from backend.agents.base.llm_client import LLMClient
+from backend.agents.base.llm_client import LLMClient, invoke_structured_output
 from backend.agents.memory.manager import MemoryManager
 from backend.agents.planner.schemas import (
     ExecutionPlan,
@@ -18,7 +20,9 @@ from backend.agents.planner.schemas import (
     ReplanRequest,
     ToolSelection,
 )
+from backend.learning.skill_learning import SkillLearningService
 from backend.tools.registry import get_tool_registry
+from backend.tools.skills.loader import SkillLoader
 
 
 class PlannerAgent:
@@ -26,6 +30,7 @@ class PlannerAgent:
 
     负责将用户请求分解为可执行的步骤序列，
     根据步骤选择合适的工具，并支持 Replan 能力。
+    支持能力缺口识别和 Skill 创建/更新建议。
     """
 
     SYSTEM_PROMPT = """你是一个公共卫生数据分析专家和计划制定者。你的任务是将用户的请求分解为可执行的步骤序列。
@@ -36,15 +41,53 @@ class PlannerAgent:
 3. 步骤之间应该有合理的依赖关系
 4. 选择合适的工具来执行每个步骤
 
-可用的工具类型：
-- read_file: 读取文件内容
-- write_file: 写入文件内容
-- edit_file: 编辑文件（搜索替换）
-- python_code: 执行 Python 代码进行数据分析
-- statistical_test: 执行统计检验
-- visualization: 生成数据可视化
+## 工具能力描述
 
-请确保计划合理、可执行，并能够解决用户的问题。"""
+在为步骤选择工具时，请仔细阅读工具的能力描述，确保选择的工具能够完成任务。
+
+## 能力缺口识别
+
+当你发现现有工具无法完成用户任务时：
+
+1. **识别能力缺口**：
+   - 分析任务需求
+   - 检查现有工具的能力范围
+   - 确定缺失的能力
+
+2. **判断是否有类似 Skill 可以扩展**：
+   - 如果有类似的 Skill，建议更新该 Skill，添加新功能
+   - 如果没有类似的 Skill，建议创建新 Skill
+
+3. **提供 Skill 建议**：
+   - 明确说明需要创建还是更新 Skill
+   - 提供能力描述
+   - 建议参数定义
+
+## Skill 创建/更新示例
+
+示例 1：用户需要做"倾向性评分匹配分析"，但现有工具不支持
+- 能力缺口：缺少倾向性评分匹配分析能力
+- 相关 Skill：regression_analysis（回归分析）
+- 建议：更新 regression_analysis Skill，添加 PSM 分析功能
+
+示例 2：用户需要做"Meta 分析"，但现有工具不支持
+- 能力缺口：缺少 Meta 分析能力
+- 相关 Skill：无
+- 建议：创建新的 meta_analysis Skill
+
+请确保计划合理、可执行，并能够解决用户的问题。如果发现能力缺口，请在计划中明确指出。"""
+
+    CAPABILITY_CHECK_PROMPT = """
+## 可用工具能力
+
+{tools_capability}
+
+## 可用 Skills
+
+{skills_capability}
+
+请根据以上工具能力信息，制定执行计划。如果发现能力缺口，请提供 Skill 创建/更新建议。
+"""
 
     REPLAN_PROMPT = """根据执行反馈，需要重新制定计划。
 
@@ -56,13 +99,16 @@ class PlannerAgent:
 1. 修改失败步骤的参数
 2. 添加新的准备步骤
 3. 选择不同的工具
-4. 调整执行顺序"""
+4. 调整执行顺序
+
+如果发现能力缺口，请提供 Skill 创建/更新建议。"""
 
     def __init__(
         self,
         llm: BaseChatModel | None = None,
         memory_manager: MemoryManager | None = None,
         token_budget: int = 500,
+        user_id: str = "default",
     ) -> None:
         """初始化 Planner Agent
 
@@ -70,11 +116,15 @@ class PlannerAgent:
             llm: LLM 实例，如果为 None 则使用默认 LLM
             memory_manager: 记忆管理器实例
             token_budget: 记忆摘要 Token 预算
+            user_id: 用户 ID，用于获取用户配置的模型
         """
         self._llm = llm
         self._llm_client: LLMClient | None = None
         self._memory_manager = memory_manager
         self._token_budget = token_budget
+        self._skill_loader = SkillLoader()
+        self._skill_learning = SkillLearningService()
+        self._user_id = user_id
 
     def _get_llm(self) -> BaseChatModel:
         """获取 LLM 实例"""
@@ -82,7 +132,7 @@ class PlannerAgent:
             return self._llm
         if self._llm_client is None:
             self._llm_client = LLMClient()
-        return self._llm_client.get_default_llm()
+        return self._llm_client.get_planner_llm(self._user_id)
 
     def _get_available_tools(self) -> list[str]:
         """获取可用工具列表"""
@@ -91,6 +141,41 @@ class PlannerAgent:
             return registry.list_tools()
         except Exception:
             return ["read_file", "write_file", "edit_file", "python_code"]
+
+    def _get_tools_capability_description(self) -> str:
+        """获取工具能力描述"""
+        try:
+            registry = get_tool_registry()
+            return registry.get_capabilities_description()
+        except Exception:
+            return "工具能力描述获取失败"
+
+    def _get_skills_capability_description(self) -> str:
+        """获取 Skills 能力描述"""
+        try:
+            skills = self._skill_loader.load_all_skills()
+            if not skills:
+                return "暂无可用 Skills"
+
+            lines = []
+            for skill in skills:
+                lines.append(f"### {skill.name}")
+                lines.append(f"描述: {skill.description}")
+                if skill.capability.capability:
+                    lines.append(f"能力: {skill.capability.capability}")
+                if skill.capability.limitations:
+                    lines.append("限制:")
+                    for limit in skill.capability.limitations:
+                        lines.append(f"  - {limit}")
+                if skill.capability.applicable_scenarios:
+                    lines.append("适用场景:")
+                    for scenario in skill.capability.applicable_scenarios:
+                        lines.append(f"  - {scenario}")
+                lines.append("")
+
+            return "\n".join(lines)
+        except Exception:
+            return "Skills 能力描述获取失败"
 
     async def create_plan(
         self,
@@ -110,7 +195,6 @@ class PlannerAgent:
         Returns:
             执行计划
         """
-        llm = self._get_llm()
         available_tools = self._get_available_tools()
 
         context_str = ""
@@ -121,28 +205,45 @@ class PlannerAgent:
         if self._memory_manager and user_id:
             memory_context = self._load_memory_context(user_id, user_query)
 
+        # 获取工具和 Skills 能力描述
+        tools_capability = self._get_tools_capability_description()
+        skills_capability = self._get_skills_capability_description()
+
+        capability_info = self.CAPABILITY_CHECK_PROMPT.format(
+            tools_capability=tools_capability,
+            skills_capability=skills_capability,
+        )
+
         user_message = f"""用户查询: {user_query}
 识别意图: {intent}
 可用工具: {', '.join(available_tools)}
 {context_str}
 {memory_context}
 
-请制定详细的执行计划。"""
+{capability_info}
 
-        structured_llm = llm.with_structured_output(ExecutionPlan)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content=self.SYSTEM_PROMPT),
-            HumanMessage(content=user_message),
-        ])
+请制定详细的执行计划。如果发现现有工具无法完成任务，请识别能力缺口并提供 Skill 创建/更新建议。"""
 
-        if isinstance(result, ExecutionPlan):
-            return result
+        try:
+            llm = self._get_llm()
+            result = await asyncio.wait_for(
+                invoke_structured_output(
+                    llm,
+                    [
+                        SystemMessage(content=self.SYSTEM_PROMPT),
+                        HumanMessage(content=user_message),
+                    ],
+                    ExecutionPlan,
+                ),
+                timeout=20,
+            )
 
-        return ExecutionPlan(
-            steps=[],
-            reasoning="计划生成失败，返回空计划",
-            estimated_complexity="unknown",
-        )
+            if isinstance(result, ExecutionPlan):
+                return result
+        except Exception:
+            pass
+
+        return self._create_fallback_plan(user_query)
 
     async def replan(
         self,
@@ -173,11 +274,14 @@ class PlannerAgent:
 
 请制定新的执行计划。"""
 
-        structured_llm = llm.with_structured_output(ExecutionPlan)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content=self.REPLAN_PROMPT),
-            HumanMessage(content=user_message),
-        ])
+        result = await invoke_structured_output(
+            llm,
+            [
+                SystemMessage(content=self.REPLAN_PROMPT),
+                HumanMessage(content=user_message),
+            ],
+            ExecutionPlan,
+        )
 
         if isinstance(result, ExecutionPlan):
             return result
@@ -216,11 +320,14 @@ class PlannerAgent:
 
 请选择最合适的工具来执行此步骤。"""
 
-        structured_llm = llm.with_structured_output(ToolSelection)
-        result = await structured_llm.ainvoke([
-            SystemMessage(content="你是一个工具选择专家。请根据步骤描述选择最合适的工具。"),
-            HumanMessage(content=prompt),
-        ])
+        result = await invoke_structured_output(
+            llm,
+            [
+                SystemMessage(content="你是一个工具选择专家。请根据步骤描述选择最合适的工具。"),
+                HumanMessage(content=prompt),
+            ],
+            ToolSelection,
+        )
 
         if isinstance(result, ToolSelection):
             return result
@@ -376,3 +483,35 @@ class PlannerAgent:
 
 步骤列表:
 {steps_str}"""
+
+    def _create_fallback_plan(self, user_query: str) -> ExecutionPlan:
+        """在 LLM 不可用时创建可执行的回退计划。"""
+        reusable_skill = self._skill_learning.find_reusable_skill(user_query)
+        description = "复用已学习 Skill 执行数据分析" if reusable_skill else "执行通用数据分析并沉淀成功路径"
+        expected = "在会话输出目录生成 analysis_report.md 和 analysis_result.json"
+
+        tool_args: dict[str, Any] = {
+            "analysis_method": user_query,
+            "analysis_type": "auto",
+            "prefer_fallback": True,
+        }
+        if reusable_skill:
+            tool_args["skill_name"] = reusable_skill
+
+        return ExecutionPlan(
+            steps=[
+                ExecutionStep(
+                    step_id="step_1",
+                    description=description,
+                    tool_name="python_code",
+                    tool_args=tool_args,
+                    expected_output=expected,
+                )
+            ],
+            reasoning=(
+                f"LLM 计划不可用，使用已学习 Skill: {reusable_skill}"
+                if reusable_skill
+                else "LLM 计划不可用，使用通用数据分析回退流程。"
+            ),
+            estimated_complexity="medium",
+        )

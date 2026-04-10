@@ -72,6 +72,28 @@ class PlottingTool(BaseTool):
         return "绑制数据图表：折线图、柱状图、散点图、直方图等"
 
     @property
+    def capability(self) -> str:
+        return "绑制基础统计图表，包括折线图、柱状图、散点图、直方图、箱线图、小提琴图、热力图、饼图、面积图"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "不支持 3D 图表",
+            "不支持交互式图表",
+            "图表样式定制能力有限",
+            "输出为静态图片格式"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "数据分布可视化",
+            "变量关系探索",
+            "趋势分析展示",
+            "公共卫生数据初步可视化"
+        ]
+
+    @property
     def args_schema(self) -> type[BaseModel]:
         return PlottingArgs
 
@@ -270,6 +292,28 @@ class ChartGenerationTool(BaseTool):
     @property
     def description(self) -> str:
         return "生成高级分析图表：相关性矩阵、分布图、对比图、时序图等"
+
+    @property
+    def capability(self) -> str:
+        return "生成高级分析图表，包括相关性矩阵热力图、多变量分布图、分组对比图、时序趋势图"
+
+    @property
+    def limitations(self) -> list[str]:
+        return [
+            "需要足够的数据量才能生成有意义的图表",
+            "相关性矩阵仅支持数值型变量",
+            "对比图需要指定分组变量",
+            "时序图需要数据按时间排序"
+        ]
+
+    @property
+    def applicable_scenarios(self) -> list[str]:
+        return [
+            "多变量相关性分析",
+            "数据分布特征探索",
+            "组间差异比较",
+            "时间趋势分析"
+        ]
 
     @property
     def args_schema(self) -> type[BaseModel]:
