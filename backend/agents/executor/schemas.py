@@ -25,6 +25,8 @@ class ExecutionResult(BaseModel):
     code: str = Field(description="执行的代码", default="")
     execution_time: float = Field(description="执行时间（秒）", default=0.0)
     artifacts: dict[str, Any] = Field(description="生成的产物（如文件路径）", default_factory=dict)
+    attempts: int = Field(description="执行尝试次数", default=1)
+    reflection: dict[str, Any] = Field(description="反思结果", default_factory=dict)
 
 
 class CodeFixRequest(BaseModel):
@@ -41,3 +43,12 @@ class CodeFixResult(BaseModel):
 
     fixed_code: str = Field(description="修复后的代码")
     fix_explanation: str = Field(description="修复说明")
+
+
+class CodeReflection(BaseModel):
+    """代码反思结果。"""
+
+    accept: bool = Field(description="是否接受当前执行结果")
+    reasoning: str = Field(description="反思结论")
+    issues: list[str] = Field(description="发现的问题", default_factory=list)
+    next_action: str = Field(description="下一步动作", default="")

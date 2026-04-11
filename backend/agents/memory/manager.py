@@ -78,6 +78,9 @@ class MemoryManager:
 
     def _init_memory(self) -> Memory:
         """初始化 mem0 Memory 实例"""
+        if self._api_key and not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = self._api_key
+
         mem0_config = {
             "vector_store": {
                 "provider": "chroma",

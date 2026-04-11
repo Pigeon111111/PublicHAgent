@@ -278,6 +278,67 @@ class ToolGuard:
             log.end_time = datetime.now()
             self._add_log(log)
 
+    async def execute_with_guard_async(
+        self,
+        tool: BaseTool,
+        args: dict[str, Any],
+        pre_hook: Callable[[str, dict[str, Any]], None] | None = None,
+        post_hook: Callable[[str, dict[str, Any], Any], None] | None = None,
+    ) -> Any:
+        """带安全守卫的异步工具执行。"""
+        log = ExecutionLog(
+            tool_name=tool.name,
+            start_time=datetime.now(),
+            params=self._sanitize_params(args),
+        )
+
+        try:
+            is_allowed, reason = self.check_permission(tool, "execute")
+            if not is_allowed:
+                raise ToolGuardError(f"权限检查失败: {reason}")
+
+            is_valid, errors = self.validate_args(tool, args)
+            if not is_valid:
+                raise ToolGuardError(f"参数验证失败: {'; '.join(errors)}")
+
+            if pre_hook:
+                pre_hook(tool.name, args)
+
+            start_time = time.time()
+            result = await tool.arun(**args)
+            end_time = time.time()
+
+            log.duration_ms = (end_time - start_time) * 1000
+            log.success = True
+            log.result = self._sanitize_result(result)
+
+            if log.duration_ms > self.policy.max_execution_time_seconds * 1000:
+                log.error = f"执行时间超过限制: {log.duration_ms:.2f}ms"
+                log.error_type = "TimeoutWarning"
+
+            if post_hook:
+                post_hook(tool.name, args, result)
+
+            return result
+
+        except ToolGuardError:
+            log.success = False
+            log.error_type = "ToolGuardError"
+            raise
+        except ToolError as e:
+            log.success = False
+            log.error = str(e)
+            log.error_type = "ToolError"
+            raise
+        except Exception as e:
+            log.success = False
+            log.error = f"{type(e).__name__}: {str(e)}"
+            log.error_type = type(e).__name__
+            raise ToolError(f"工具执行异常: {e}") from e
+        finally:
+            log.end_time = datetime.now()
+            self._add_log(log)
+
     def _sanitize_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """清理参数中的敏感信息"""
         sanitized = {}

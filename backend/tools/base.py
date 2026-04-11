@@ -3,6 +3,7 @@
 定义工具的标准接口和抽象基类。
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -84,6 +85,13 @@ class BaseTool(ABC):
             执行结果
         """
         pass
+
+    async def arun(self, **kwargs: Any) -> Any:
+        """异步执行工具。
+
+        默认将同步工具放入线程池，便于统一接入异步工具。
+        """
+        return await asyncio.to_thread(self.run, **kwargs)
 
     def get_openai_tool_definition(self) -> dict[str, Any]:
         """获取 OpenAI 格式的工具定义

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMenu, ElMenuItem, ElIcon, ElBreadcrumb, ElBreadcrumbItem } from 'element-plus'
-import { ChatDotRound, Document, Clock, Setting, HomeFilled } from '@element-plus/icons-vue'
+import { ChatDotRound, Document, Clock, Setting, HomeFilled, Collection } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +23,7 @@ const breadcrumbItems = computed(() => {
       '/chat': '智能对话',
       '/files': '文件管理',
       '/history': '历史记录',
+      '/methods': '方法库',
       '/settings': '系统设置',
     }
 
@@ -79,6 +80,10 @@ function canGoBack() {
         <el-menu-item index="/history">
           <el-icon><Clock /></el-icon>
           <span>历史记录</span>
+        </el-menu-item>
+        <el-menu-item index="/methods">
+          <el-icon><Collection /></el-icon>
+          <span>方法库</span>
         </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>

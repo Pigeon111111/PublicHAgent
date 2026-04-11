@@ -1,4 +1,4 @@
-import type { WebSocketMessage } from '@/types'
+import type { SessionStatusResponse, WebSocketMessage } from '@/types'
 
 type MessageHandler = (message: WebSocketMessage) => void
 type ConnectionHandler = (connected: boolean) => void
@@ -20,6 +20,20 @@ function buildWebSocketUrl(sessionId: string): string {
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}/ws/${sessionId}`
+}
+
+function buildHttpUrl(path: string): string {
+  const configuredApiUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
+  if (configuredApiUrl) {
+    return `${configuredApiUrl.replace(/\/$/, '')}${path}`
+  }
+
+  const configuredWsUrl = import.meta.env.VITE_WS_BASE_URL as string | undefined
+  if (configuredWsUrl) {
+    return `${configuredWsUrl.replace(/^ws/, 'http').replace(/\/$/, '')}${path}`
+  }
+
+  return `${window.location.origin}${path}`
 }
 
 export function connectWebSocket(
@@ -127,6 +141,18 @@ export function sendMessage(message: Record<string, unknown>): boolean {
 
 export function interruptExecution(): boolean {
   return sendMessage({ type: 'interrupt' })
+}
+
+export function resumeExecution(): boolean {
+  return sendMessage({ type: 'resume' })
+}
+
+export async function fetchSessionStatus(sessionId: string): Promise<SessionStatusResponse | null> {
+  const response = await fetch(buildHttpUrl(`/ws/${sessionId}/status`))
+  if (!response.ok) {
+    return null
+  }
+  return await response.json() as SessionStatusResponse
 }
 
 export function isConnected(): boolean {

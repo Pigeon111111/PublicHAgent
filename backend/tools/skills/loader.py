@@ -1,7 +1,9 @@
-"""技能加载器
+"""Skill 加载器。
 
-实现技能的动态加载和发现机制。
+从文件系统动态发现和加载 Skill，支持 YAML front matter 与 Markdown 章节解析。
 """
+
+from __future__ import annotations
 
 import re
 from pathlib import Path
@@ -13,146 +15,84 @@ from backend.tools.skills.models import (
     Skill,
     SkillCapability,
     SkillExample,
+    SkillLifecycleState,
     SkillMetadata,
     SkillParameter,
 )
 
 
 class SkillLoaderError(Exception):
-    """技能加载错误"""
-
-    pass
+    """Skill 加载错误。"""
 
 
 class SkillLoader:
-    """技能加载器
-
-    支持从文件系统动态加载技能，支持按需加载和技能发现。
-    """
+    """Skill 动态加载器。"""
 
     SKILL_FILE_NAME = "SKILL.md"
 
     def __init__(self, skills_dir: str | Path | None = None) -> None:
-        """初始化技能加载器
-
-        Args:
-            skills_dir: 技能目录路径，默认为 backend/tools/skills
-        """
-        if skills_dir:
-            self._skills_dir = Path(skills_dir)
-        else:
-            self._skills_dir = Path(__file__).parent
-
+        self._skills_dir = Path(skills_dir) if skills_dir else Path(__file__).parent
         self._cache: dict[str, Skill] = {}
 
     def discover_skills(self) -> list[str]:
-        """发现所有可用技能
+        """发现所有 Skill 目录。"""
 
-        Returns:
-            技能名称列表
-        """
-        skills: list[str] = []
         if not self._skills_dir.exists():
-            return skills
+            return []
 
+        names: list[str] = []
         for item in self._skills_dir.iterdir():
-            if item.is_dir():
-                skill_file = item / self.SKILL_FILE_NAME
-                if skill_file.exists():
-                    skills.append(item.name)
-
-        return skills
+            if item.is_dir() and (item / self.SKILL_FILE_NAME).exists():
+                names.append(item.name)
+        return sorted(names)
 
     def load_skill(self, skill_name: str, use_cache: bool = True) -> Skill:
-        """加载指定技能
+        """加载单个 Skill。"""
 
-        Args:
-            skill_name: 技能名称（目录名）
-            use_cache: 是否使用缓存
-
-        Returns:
-            Skill 对象
-
-        Raises:
-            SkillLoaderError: 技能加载失败
-        """
         if use_cache and skill_name in self._cache:
             return self._cache[skill_name]
 
         skill_dir = self._skills_dir / skill_name
         skill_file = skill_dir / self.SKILL_FILE_NAME
-
         if not skill_file.exists():
             raise SkillLoaderError(f"技能文件不存在: {skill_file}")
 
         try:
             skill = self._parse_skill_file(skill_file)
-            skill.source_path = str(skill_dir)
-            self._cache[skill_name] = skill
-            return skill
-        except Exception as e:
-            raise SkillLoaderError(f"解析技能文件失败: {skill_file}, 错误: {e}") from e
+        except Exception as exc:  # noqa: BLE001
+            raise SkillLoaderError(f"解析 Skill 失败: {skill_file} - {exc}") from exc
+
+        skill.source_path = str(skill_dir)
+        self._cache[skill_name] = skill
+        return skill
 
     def load_all_skills(self, use_cache: bool = True) -> list[Skill]:
-        """加载所有技能
+        """加载全部 Skill。"""
 
-        Args:
-            use_cache: 是否使用缓存
-
-        Returns:
-            Skill 对象列表
-        """
-        skills = []
+        skills: list[Skill] = []
         for skill_name in self.discover_skills():
             try:
-                skill = self.load_skill(skill_name, use_cache)
-                skills.append(skill)
+                skills.append(self.load_skill(skill_name, use_cache=use_cache))
             except SkillLoaderError:
                 continue
         return skills
 
     def reload_skill(self, skill_name: str) -> Skill:
-        """重新加载技能（清除缓存）
+        """重新加载单个 Skill。"""
 
-        Args:
-            skill_name: 技能名称
-
-        Returns:
-            Skill 对象
-        """
-        if skill_name in self._cache:
-            del self._cache[skill_name]
+        self._cache.pop(skill_name, None)
         return self.load_skill(skill_name, use_cache=False)
 
     def clear_cache(self) -> None:
-        """清除所有缓存"""
+        """清空缓存。"""
+
         self._cache.clear()
 
     def _parse_skill_file(self, skill_file: Path) -> Skill:
-        """解析技能文件
-
-        Args:
-            skill_file: 技能文件路径
-
-        Returns:
-            Skill 对象
-        """
         content = skill_file.read_text(encoding="utf-8")
         return self._parse_skill_content(content)
 
     def _parse_skill_content(self, content: str) -> Skill:
-        """解析技能内容
-
-        支持的格式：
-        - YAML front matter (---)
-        - Markdown 标题结构
-
-        Args:
-            content: 技能文件内容
-
-        Returns:
-            Skill 对象
-        """
         metadata = SkillMetadata(name="unknown")
         capability = SkillCapability()
         parameters: list[SkillParameter] = []
@@ -168,16 +108,12 @@ class SkillLoader:
 
         if "capability" in sections:
             capability = self._parse_capability_section(sections["capability"])
-
         if "parameters" in sections:
             parameters = self._parse_parameters_section(sections["parameters"])
-
         if "prompt_template" in sections:
             prompt_template = sections["prompt_template"].strip()
-
         if "examples" in sections:
             examples = self._parse_examples_section(sections["examples"])
-
         if "notes" in sections:
             notes = self._parse_notes_section(sections["notes"])
 
@@ -191,35 +127,67 @@ class SkillLoader:
         )
 
     def _parse_yaml_frontmatter(self, content: str) -> tuple[SkillMetadata, str]:
-        """解析 YAML front matter"""
         match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
         if not match:
             return SkillMetadata(name="unknown"), content
 
         yaml_content = match.group(1)
         remaining = match.group(2)
-
         try:
-            data = yaml.safe_load(yaml_content)
-            metadata = SkillMetadata(
-                name=data.get("name", "unknown"),
-                version=data.get("version", "1.0.0"),
-                description=data.get("description", ""),
-                author=data.get("author", ""),
-                tags=data.get("tags", []),
-                category=data.get("category", "general"),
-                min_python_version=data.get("min_python_version", "3.10"),
-                dependencies=data.get("dependencies", []),
-            )
-            return metadata, remaining
+            data = yaml.safe_load(yaml_content) or {}
         except yaml.YAMLError:
             return SkillMetadata(name="unknown"), remaining
 
+        family_default = self._infer_method_family(data)
+        metadata = SkillMetadata(
+            name=str(data.get("name", "unknown")),
+            version=str(data.get("version", "1.0.0")),
+            description=str(data.get("description", "")),
+            author=str(data.get("author", "")),
+            tags=list(data.get("tags", []) or []),
+            category=str(data.get("category", "general")),
+            min_python_version=str(data.get("min_python_version", "3.10")),
+            dependencies=list(data.get("dependencies", []) or []),
+            analysis_domain=str(data.get("analysis_domain", "general")),
+            method_family=str(data.get("method_family", family_default)),
+            method_variant=str(data.get("method_variant", "")),
+            process_signature=str(data.get("process_signature", "")),
+            input_schema_signature=str(data.get("input_schema_signature", "")),
+            verifier_family=str(data.get("verifier_family", "")),
+            provenance_trajectory_id=str(data.get("provenance_trajectory_id", "")),
+            confidence_score=float(data.get("confidence_score", 0.0) or 0.0),
+            lifecycle_state=self._normalize_lifecycle_state(data.get("lifecycle_state", "active")),
+            last_used_at=str(data.get("last_used_at", "")),
+            usage_count=int(data.get("usage_count", 0) or 0),
+            verifier_pass_rate=float(data.get("verifier_pass_rate", 0.0) or 0.0),
+        )
+        return metadata, remaining
+
+    def _normalize_lifecycle_state(self, value: Any) -> SkillLifecycleState:
+        lifecycle = str(value or "active").strip()
+        if lifecycle == "candidate":
+            return "candidate"
+        if lifecycle == "deprecated":
+            return "deprecated"
+        if lifecycle == "legacy":
+            return "legacy"
+        return "active"
+
+    def _infer_method_family(self, data: dict[str, Any]) -> str:
+        """为旧 front matter 推断方法家族。"""
+
+        name = str(data.get("name", "")).strip()
+        if name in {"regression_analysis", "survival_analysis"}:
+            return name
+        if name in {"descriptive_statistics", "descriptive_analysis"}:
+            return "descriptive_analysis"
+        category = str(data.get("category", "general")).strip()
+        return category if category in {"visualization", "general"} else "general"
+
     def _parse_markdown_sections(self, content: str) -> dict[str, str]:
-        """解析 Markdown 章节"""
         sections: dict[str, str] = {}
-        current_section = None
-        current_content: list[str] = []
+        current_section: str | None = None
+        current_lines: list[str] = []
 
         section_mapping = {
             "能力描述": "capability",
@@ -234,72 +202,51 @@ class SkillLoader:
             "notes": "notes",
         }
 
-        for line in content.split("\n"):
+        for line in content.splitlines():
             header_match = re.match(r"^#+\s+(.+)$", line)
             if header_match:
-                if current_section and current_content:
-                    sections[current_section] = "\n".join(current_content).strip()
-
+                if current_section is not None:
+                    sections[current_section] = "\n".join(current_lines).strip()
                 header = header_match.group(1).strip().lower()
                 current_section = section_mapping.get(header)
-                current_content = []
-            elif current_section:
-                current_content.append(line)
+                current_lines = []
+                continue
 
-        if current_section and current_content:
-            sections[current_section] = "\n".join(current_content).strip()
+            if current_section is not None:
+                current_lines.append(line)
+
+        if current_section is not None:
+            sections[current_section] = "\n".join(current_lines).strip()
 
         return sections
 
-    def _parse_parameters_section(self, content: str) -> list[SkillParameter]:
-        """解析参数章节"""
-        parameters = []
-        lines = content.strip().split("\n")
-
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            if line.startswith("- ") or line.startswith("* "):
-                param = self._parse_parameter_line(line[2:])
-                if param:
-                    parameters.append(param)
-            elif line.startswith("|"):
-                param = self._parse_parameter_table_row(line)
-                if param:
-                    parameters.append(param)
-
-        return parameters
-
     def _parse_capability_section(self, content: str) -> SkillCapability:
-        """解析能力描述章节"""
         capability_text = ""
         limitations: list[str] = []
         applicable_scenarios: list[str] = []
+        current_mode: str | None = None
 
-        current_section = None
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("**能力范围**") or line.startswith("能力范围"):
+                current_mode = "capability"
+                capability_text = line.split(":", 1)[-1].split("：", 1)[-1].strip()
+                continue
+            if line.startswith("**限制条件**") or line.startswith("限制条件"):
+                current_mode = "limitations"
+                continue
+            if line.startswith("**适用场景**") or line.startswith("适用场景"):
+                current_mode = "scenarios"
+                continue
 
-        for line in content.split("\n"):
-            line_stripped = line.strip()
-
-            if line_stripped.startswith("**能力范围**") or line_stripped.startswith("能力范围"):
-                current_section = "capability"
-                if ":" in line_stripped:
-                    capability_text = line_stripped.split(":", 1)[1].strip()
-            elif line_stripped.startswith("**限制条件**") or line_stripped.startswith("限制条件"):
-                current_section = "limitations"
-            elif line_stripped.startswith("**适用场景**") or line_stripped.startswith("适用场景"):
-                current_section = "scenarios"
-            elif current_section == "capability" and not capability_text:
-                if line_stripped and not line_stripped.startswith("#"):
-                    capability_text = line_stripped
-            elif current_section == "limitations":
-                if line_stripped.startswith("- ") or line_stripped.startswith("* "):
-                    limitations.append(line_stripped[2:])
-            elif current_section == "scenarios":
-                if line_stripped.startswith("- ") or line_stripped.startswith("* "):
-                    applicable_scenarios.append(line_stripped[2:])
+            if current_mode == "capability" and not capability_text:
+                capability_text = line
+            elif current_mode == "limitations" and (line.startswith("- ") or line.startswith("* ")):
+                limitations.append(line[2:].strip())
+            elif current_mode == "scenarios" and (line.startswith("- ") or line.startswith("* ")):
+                applicable_scenarios.append(line[2:].strip())
 
         return SkillCapability(
             capability=capability_text,
@@ -307,90 +254,98 @@ class SkillLoader:
             applicable_scenarios=applicable_scenarios,
         )
 
+    def _parse_parameters_section(self, content: str) -> list[SkillParameter]:
+        parameters: list[SkillParameter] = []
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("- ") or line.startswith("* "):
+                parameter = self._parse_parameter_line(line[2:].strip())
+                if parameter is not None:
+                    parameters.append(parameter)
+                continue
+            if line.startswith("|"):
+                parameter = self._parse_parameter_table_row(line)
+                if parameter is not None:
+                    parameters.append(parameter)
+        return parameters
+
     def _parse_parameter_line(self, line: str) -> SkillParameter | None:
-        """解析参数行"""
-        match = re.match(
-            r"`?(\w+)`?\s*[:：]\s*(.+)$",
-            line
-        )
+        match = re.match(r"`?([\w-]+)`?\s*[:：]\s*(.+)$", line)
         if not match:
             return None
 
-        name = match.group(1)
-        rest = match.group(2)
-
-        param_type = "string"
+        name = match.group(1).strip()
+        rest = match.group(2).strip()
+        parameter_type = "string"
         description = rest
         required = True
-        default = None
-        enum = None
+        default: Any = None
 
-        type_match = re.search(r"\((\w+)\)", rest)
+        type_match = re.search(r"\(([^)]+)\)", rest)
         if type_match:
-            param_type = type_match.group(1)
-            description = re.sub(r"\(\w+\)", "", description).strip()
+            parameter_type = type_match.group(1).strip()
+            description = re.sub(r"\([^)]+\)", "", description, count=1).strip()
 
-        if "[可选]" in rest or "(可选)" in rest:
+        if "可选" in rest:
             required = False
-            description = re.sub(r"[\[\(]?可选[\]\)]?", "", description).strip()
+            description = description.replace("[可选]", "").replace("可选", "").strip()
 
-        default_match = re.search(r"默认[：:]\s*(.+?)(?:[,，]|$)", rest)
+        default_match = re.search(r"默认[:：]\s*([^,，]+)", rest)
         if default_match:
             default = default_match.group(1).strip()
 
         return SkillParameter(
             name=name,
-            type=param_type,
+            type=parameter_type,
             description=description,
             required=required,
             default=default,
-            enum=enum,
         )
 
     def _parse_parameter_table_row(self, line: str) -> SkillParameter | None:
-        """解析参数表格行"""
-        cells = [c.strip() for c in line.split("|") if c.strip()]
+        cells = [cell.strip() for cell in line.split("|") if cell.strip()]
         if len(cells) < 2:
             return None
-
-        name = cells[0]
-        param_type = cells[1] if len(cells) > 1 else "string"
-        description = cells[2] if len(cells) > 2 else ""
-        required = cells[3].lower() not in ["false", "否", "可选"] if len(cells) > 3 else True
-
         return SkillParameter(
-            name=name,
-            type=param_type,
-            description=description,
-            required=required,
+            name=cells[0],
+            type=cells[1] if len(cells) > 1 else "string",
+            description=cells[2] if len(cells) > 2 else "",
+            required=(cells[3].lower() not in {"false", "否", "可选"}) if len(cells) > 3 else True,
         )
 
     def _parse_examples_section(self, content: str) -> list[SkillExample]:
-        """解析示例章节"""
-        examples = []
+        examples: list[SkillExample] = []
         current_example: dict[str, Any] = {}
-        current_key = None
+        current_key: str | None = None
 
-        for line in content.split("\n"):
-            line = line.strip()
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
 
             if line.startswith("### ") or line.startswith("**示例"):
                 if current_example:
                     examples.append(SkillExample(**current_example))
                 current_example = {"name": line.replace("#", "").replace("*", "").strip()}
                 current_key = None
-            elif line.startswith("**输入**") or line.lower().startswith("input:"):
+                continue
+
+            if line.startswith("**输入**") or line.lower().startswith("input:"):
                 current_key = "input"
                 current_example["input"] = {}
-            elif line.startswith("**输出**") or line.lower().startswith("output:"):
+                continue
+            if line.startswith("**输出**") or line.lower().startswith("output:"):
                 current_key = "output"
-            elif current_key == "input" and ":" in line:
+                current_example["output"] = ""
+                continue
+
+            if current_key == "input" and ":" in line:
                 key, value = line.split(":", 1)
-                current_example["input"][key.strip()] = value.strip()
+                current_example.setdefault("input", {})[key.strip("- ").strip()] = value.strip()
             elif current_key == "output":
-                if "output" not in current_example:
-                    current_example["output"] = ""
-                current_example["output"] += line + "\n"
+                current_example["output"] = f"{current_example.get('output', '')}{line}\n"
 
         if current_example:
             examples.append(SkillExample(**current_example))
@@ -398,12 +353,11 @@ class SkillLoader:
         return examples
 
     def _parse_notes_section(self, content: str) -> list[str]:
-        """解析注意事项章节"""
-        notes = []
-        for line in content.split("\n"):
-            line = line.strip()
+        notes: list[str] = []
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
             if line.startswith("- ") or line.startswith("* "):
-                notes.append(line[2:])
-            elif line.startswith(f"{len(notes) + 1}."):
-                notes.append(line.split(".", 1)[1].strip())
+                notes.append(line[2:].strip())
+            elif re.match(r"^\d+\.\s+", line):
+                notes.append(re.sub(r"^\d+\.\s+", "", line))
         return notes

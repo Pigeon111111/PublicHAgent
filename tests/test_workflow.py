@@ -1,6 +1,6 @@
 """LangGraph 工作流集成测试"""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -126,6 +126,16 @@ class TestAgentWorkflow:
         workflow = AgentWorkflow(llm=mock_llm)
         assert workflow._llm == mock_llm
 
+    def test_init_with_memory_manager(self) -> None:
+        """测试工作流默认接入 MemoryManager。"""
+        mock_memory_manager = MagicMock()
+        with patch(
+            "backend.core.workflow.get_optional_memory_manager",
+            return_value=mock_memory_manager,
+        ):
+            workflow = AgentWorkflow()
+        assert workflow._memory_manager is mock_memory_manager
+
     def test_build_workflow(self) -> None:
         """测试构建工作流"""
         workflow = AgentWorkflow()
@@ -243,6 +253,7 @@ class TestWorkflowNodes:
 
         assert "reflection_feedback" in result
         assert "should_replan" in result
+        assert "evaluation_report" in result
 
 
 class TestWorkflowRouting:

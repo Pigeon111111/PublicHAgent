@@ -359,6 +359,112 @@ class TestHistoryRoutes:
         assert response.status_code == 404
 
 
+class TestExtendedHistoryRoutes:
+    """测试扩展历史与方法接口。"""
+
+    @pytest.fixture
+    def client(self) -> TestClient:
+        app = create_app()
+        return TestClient(app)
+
+    def test_analysis_detail_and_evaluation_review(self, client: TestClient) -> None:
+        """测试分析详情、评估查询和审阅接口。"""
+        from backend.api.routes.history import reset_history_storage
+        from backend.storage.history_storage import get_history_storage
+
+        reset_history_storage()
+        storage = get_history_storage()
+        record = storage.create_analysis_record(
+            query="测试回归分析",
+            intent="regression_analysis",
+            status="completed",
+            result_summary="已完成",
+            steps_count=1,
+            task_family="regression_analysis",
+            evaluation_score=0.91,
+            evaluation_passed=True,
+            evaluation_summary="通过",
+        )
+        storage.upsert_evaluation_report(
+            analysis_record_id=record["id"],
+            session_id="session_api_test",
+            trajectory_id="traj_api_test",
+            task_family="regression_analysis",
+            final_score=0.91,
+            passed=True,
+            summary="评估通过",
+            report_json={
+                "task_family": "regression_analysis",
+                "passed": True,
+                "final_score": 0.91,
+                "summary": "评估通过",
+                "score_breakdown": {
+                    "artifact_score": 1.0,
+                    "statistical_score": 0.9,
+                    "process_score": 0.85,
+                    "report_score": 0.9,
+                },
+            },
+            associated_skill="learned_regression_variant",
+        )
+
+        detail_response = client.get(f"/api/analysis/{record['id']}")
+        assert detail_response.status_code == 200
+        detail_data = detail_response.json()
+        assert detail_data["record"]["task_family"] == "regression_analysis"
+        assert detail_data["evaluation"]["summary"] == "评估通过"
+
+        evaluation_response = client.get(f"/api/analysis/{record['id']}/evaluation")
+        assert evaluation_response.status_code == 200
+        assert evaluation_response.json()["associated_skill"] == "learned_regression_variant"
+
+        review_response = client.post(
+            f"/api/analysis/{record['id']}/evaluation/review",
+            json={
+                "review_status": "confirmed",
+                "review_label": "correct",
+                "review_comment": "结果核对无误",
+                "reviewed_by": "tester",
+            },
+        )
+        assert review_response.status_code == 200
+        assert review_response.json()["review_status"] == "confirmed"
+
+        rerun_response = client.post(f"/api/analysis/{record['id']}/rerun")
+        assert rerun_response.status_code == 200
+        rerun_data = rerun_response.json()
+        assert rerun_data["analysis_id"] == record["id"]
+        assert rerun_data["query"] == "测试回归分析"
+
+    def test_method_family_and_preference_routes(self, client: TestClient) -> None:
+        """测试方法家族列表、变体列表与偏好设置。"""
+        from backend.api.routes.history import reset_history_storage
+        from backend.learning.skill_learning import SkillLearningService
+        from backend.tools.skills.registry import reset_skill_registry
+
+        reset_history_storage()
+        reset_skill_registry()
+        SkillLearningService().migrate_legacy_skills()
+
+        families_response = client.get("/api/method-families")
+        assert families_response.status_code == 200
+        families = families_response.json()["families"]
+        assert any(item["family"] == "regression_analysis" for item in families)
+
+        variants_response = client.get("/api/method-families/regression_analysis/variants")
+        assert variants_response.status_code == 200
+        variants = variants_response.json()["variants"]
+        assert isinstance(variants, list)
+
+        preferred_variant = variants[0]["name"] if variants else ""
+        preference_response = client.post(
+            "/api/method-families/regression_analysis/preferred-variant",
+            json={"preferred_variant": preferred_variant, "user_id": "default"},
+        )
+        assert preference_response.status_code == 200
+        assert preference_response.json()["preference"]["preferred_variant"] == preferred_variant
+
+
 class TestConfigRoutes:
     """测试配置路由"""
 

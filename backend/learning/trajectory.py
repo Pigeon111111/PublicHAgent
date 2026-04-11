@@ -37,10 +37,12 @@ class AnalysisTrajectory(BaseModel):
     session_id: str = "default"
     user_query: str
     intent: str = ""
+    task_family: str = ""
     data_files: list[str] = Field(default_factory=list)
     plan_summary: str = ""
     attempts: list[AttemptRecord] = Field(default_factory=list)
     validation: ValidationRecord = Field(default_factory=lambda: ValidationRecord(passed=False))
+    evaluation_report: dict[str, Any] = Field(default_factory=dict)
     learned_skill: str | None = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())

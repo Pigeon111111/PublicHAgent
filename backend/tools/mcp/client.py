@@ -3,6 +3,7 @@
 使用 langchain-mcp-adapters 实现 MCP 服务器的连接和工具获取。
 """
 
+import inspect
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -110,7 +111,7 @@ class MCPClient:
             self._config = MCPConfig()
 
         self._client: MultiServerMCPClient | None = None
-        self._tools: list[Any] = []
+        self._tools: dict[str, list[Any]] = {}
         self._connected = False
 
     def _build_server_params(self) -> dict[str, Any]:
@@ -137,20 +138,30 @@ class MCPClient:
 
     async def connect(self) -> None:
         """连接到 MCP 服务器"""
+        if self._connected and self._client is not None:
+            return
+
         server_params = self._build_server_params()
 
         if not server_params:
             raise MCPClientError("没有可用的 MCP 服务器配置")
 
-        self._client = MultiServerMCPClient(server_params)
+        client = MultiServerMCPClient(server_params, tool_name_prefix=True)
+        entered = client.__aenter__()
+        if inspect.isawaitable(entered):
+            await entered
+        self._client = client
         self._connected = True
 
     async def disconnect(self) -> None:
         """断开连接"""
         if self._client:
+            exited = self._client.__aexit__(None, None, None)
+            if inspect.isawaitable(exited):
+                await exited
             self._client = None
         self._connected = False
-        self._tools = []
+        self._tools = {}
 
     async def get_tools(self) -> list[Any]:
         """获取所有 MCP 工具
@@ -161,11 +172,10 @@ class MCPClient:
         if not self._connected or not self._client:
             raise MCPClientError("客户端未连接，请先调用 connect()")
 
-        if self._tools:
-            return self._tools
-
-        self._tools = self._client.get_tools()
-        return self._tools
+        all_tools: list[Any] = []
+        for server_name in self.list_servers():
+            all_tools.extend(await self.get_tools_by_server(server_name))
+        return all_tools
 
     async def get_tools_by_server(self, server_name: str) -> list[Any]:
         """获取指定服务器的工具
@@ -176,8 +186,16 @@ class MCPClient:
         Returns:
             工具列表
         """
-        all_tools = await self.get_tools()
-        return [t for t in all_tools if hasattr(t, "_server_name") and t._server_name == server_name]
+        if not self._connected or not self._client:
+            raise MCPClientError("客户端未连接，请先调用 connect()")
+
+        if server_name in self._tools:
+            return self._tools[server_name]
+
+        tools_result = self._client.get_tools(server_name=server_name)
+        tools = await tools_result if inspect.isawaitable(tools_result) else tools_result
+        self._tools[server_name] = list(tools)
+        return self._tools[server_name]
 
     def list_servers(self) -> list[str]:
         """列出所有已配置的服务器名称"""

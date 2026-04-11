@@ -1,0 +1,12 @@
+{
+  "family": "survival_analysis",
+  "intents": ["survival_analysis"],
+  "required_json_fields": [
+    "analysis_method",
+    "source_file",
+    "shape",
+    "columns"
+  ],
+  "report_keywords": ["分析方法", "数据文件", "结果", "结论"],
+  "statistical_mode": "survival"
+}

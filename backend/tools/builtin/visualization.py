@@ -4,20 +4,93 @@
 """
 
 import base64
+from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import matplotlib
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from matplotlib import font_manager
 from pydantic import BaseModel, Field
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 
 from backend.tools.base import BaseTool, ToolError
 
-matplotlib.use("Agg")
-sns.set_theme(style="whitegrid")
+_PREFERRED_CJK_FONT_FILES = (
+    "msyh.ttc",
+    "msyhbd.ttc",
+    "msyhl.ttc",
+    "simhei.ttf",
+    "simsun.ttc",
+    "simsunb.ttf",
+    "Deng.ttf",
+    "Dengb.ttf",
+)
+_PREFERRED_CJK_FONT_NAMES = (
+    "Microsoft YaHei",
+    "SimHei",
+    "SimSun",
+    "DengXian",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+)
+
+
+def _configure_cjk_fonts() -> list[str]:
+    """配置 matplotlib 中文字体回退，避免图表标题和标签缺字。"""
+    candidate_paths: list[Path] = []
+    configured_names: list[str] = []
+    seen_paths: set[str] = set()
+
+    windows_font_dir = Path(r"C:\Windows\Fonts")
+    for file_name in _PREFERRED_CJK_FONT_FILES:
+        font_path = windows_font_dir / file_name
+        if font_path.exists():
+            candidate_paths.append(font_path)
+
+    known_tokens = ("msyh", "simhei", "simsun", "deng", "notosanscjk", "sourcehansans")
+    for font_path_str in font_manager.findSystemFonts():
+        font_path = Path(font_path_str)
+        if any(token in font_path.name.lower() for token in known_tokens):
+            candidate_paths.append(font_path)
+
+    for font_path in candidate_paths:
+        resolved = str(font_path.resolve())
+        if resolved in seen_paths:
+            continue
+        seen_paths.add(resolved)
+        with suppress(RuntimeError, OSError, ValueError):
+            font_manager.fontManager.addfont(resolved)
+            font_name = font_manager.FontProperties(fname=resolved).get_name()
+            if font_name and font_name not in configured_names:
+                configured_names.append(font_name)
+
+    installed_names = {font.name for font in font_manager.fontManager.ttflist}
+    for font_name in _PREFERRED_CJK_FONT_NAMES:
+        if font_name in installed_names and font_name not in configured_names:
+            configured_names.append(font_name)
+
+    fallback_fonts = [*configured_names, "DejaVu Sans"]
+    matplotlib.rcParams["font.family"] = "sans-serif"
+    matplotlib.rcParams["font.sans-serif"] = fallback_fonts
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    return fallback_fonts
+
+
+_CONFIGURED_FONT_FAMILIES = _configure_cjk_fonts()
+sns.set_theme(
+    style="whitegrid",
+    rc={
+        "font.family": "sans-serif",
+        "font.sans-serif": _CONFIGURED_FONT_FAMILIES,
+        "axes.unicode_minus": False,
+    },
+)
 
 
 class PlottingArgs(BaseModel):

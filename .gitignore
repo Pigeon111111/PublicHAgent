@@ -59,6 +59,14 @@ backend/config/.env
 data/
 logs/
 /package-lock.json
+chroma_db/
+backend/tools/skills/learned_*/
+private_notes/
+PLAN.md
+PH_upgrade.txt
+docs/个人学习-*.md
+docs/多平台访问方案.md
+docs/微信小程序迁移可行性分析.md
 
 # 加密密钥文件
 .encryption_key

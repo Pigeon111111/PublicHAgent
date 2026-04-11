@@ -4,6 +4,7 @@
 """
 
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -11,12 +12,15 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import StateSnapshot
 from pydantic import BaseModel, Field
 
 from backend.agents.base.llm_client import LLMClient
 from backend.agents.executor.context import IsolatedExecutionContext
 from backend.agents.executor.executor_agent import ExecutorAgent
 from backend.agents.intent.recognizer import IntentRecognizer
+from backend.agents.memory.factory import get_optional_memory_manager
+from backend.agents.memory.manager import MemoryManager
 from backend.agents.planner.planner_agent import PlannerAgent
 from backend.agents.planner.schemas import (
     ExecutionPlan as PlannerExecutionPlan,
@@ -24,6 +28,7 @@ from backend.agents.planner.schemas import (
 from backend.agents.planner.schemas import (
     ExecutionStep as PlannerExecutionStep,
 )
+from backend.core.checkpoint_store import get_workflow_checkpoint_manager
 from backend.core.session_workspace import SessionWorkspaceManager
 from backend.core.state import (
     AgentState,
@@ -34,6 +39,8 @@ from backend.core.state import (
 from backend.core.state import (
     ExecutionStep as StateExecutionStep,
 )
+from backend.evaluation.orchestrator import EvaluationOrchestrator
+from backend.evaluation.schemas import EvaluationReport
 from backend.learning.skill_learning import SkillLearningService
 from backend.learning.trajectory import (
     AnalysisTrajectory,
@@ -95,12 +102,16 @@ class AgentWorkflow:
         self._intent_recognizer = intent_recognizer
         self._workflow: StateGraph | None = None
         self._compiled_workflow: Any = None
-        self._checkpointer = MemorySaver()
+        self._checkpointer: Any | None = None
+        self._compiled_checkpointer_id: int | None = None
         self._user_id = user_id
+        self._memory_manager: MemoryManager | None = get_optional_memory_manager(user_id)
         self._workspace_manager = SessionWorkspaceManager()
         self._trajectory_recorder = TrajectoryRecorder()
         self._skill_learning = SkillLearningService()
+        self._evaluator = EvaluationOrchestrator()
         self._cancellation_checker = cancellation_checker
+        self._durability_mode: Literal["sync", "async", "exit"] = "sync"
 
     def set_cancellation_checker(self, cancellation_checker: Callable[[], bool] | None) -> None:
         """设置外部中断检查器。"""
@@ -173,7 +184,14 @@ class AgentWorkflow:
         if self._is_cancelled():
             return self._cancelled_update()
 
-        planner = PlannerAgent(llm=self._llm, user_id=self._user_id)
+        with suppress(Exception):
+            await get_tool_registry().refresh_mcp_tools()
+
+        planner = PlannerAgent(
+            llm=self._llm,
+            memory_manager=self._memory_manager,
+            user_id=self._user_id,
+        )
         plan_model = await planner.create_plan(
             user_query=state["user_query"],
             intent=state["intent"],
@@ -223,6 +241,9 @@ class AgentWorkflow:
 
         current_step = cast(StateExecutionStep, dict(plan["steps"][current_index]))
         current_step["status"] = "running"
+
+        with suppress(Exception):
+            await get_tool_registry().refresh_mcp_tools()
 
         workspace = state.get("workspace") or self._prepare_workspace(
             state["session_id"],
@@ -278,9 +299,14 @@ class AgentWorkflow:
         if self._is_cancelled():
             return self._cancelled_update()
 
+        evaluation = self._evaluate_execution(state)
         executor_results = state.get("executor_results", [])
-        validation = self._validate_execution(executor_results)
-        trajectory = self._build_trajectory(state, validation)
+        validation = (
+            self._validation_from_evaluation(evaluation)
+            if evaluation is not None
+            else self._validate_execution(executor_results)
+        )
+        trajectory = self._build_trajectory(state, validation, evaluation)
         learned_skill = None
         try:
             learned_skill = self._skill_learning.learn_from_trajectory(trajectory)
@@ -288,9 +314,24 @@ class AgentWorkflow:
             validation.issues.append(f"Skill 学习失败: {exc}")
         if learned_skill:
             trajectory.learned_skill = learned_skill
+        selected_skill = self._select_associated_skill(state)
         trajectory_path = self._trajectory_recorder.save(trajectory)
 
-        final_result = self._build_final_result(state, validation, learned_skill, str(trajectory_path))
+        final_result = self._build_final_result(
+            state,
+            validation,
+            evaluation,
+            learned_skill,
+            str(trajectory_path),
+        )
+        self._write_memory_records(
+            state=state,
+            validation=validation,
+            evaluation=evaluation,
+            final_result=final_result,
+            learned_skill=learned_skill,
+            trajectory=trajectory,
+        )
         should_replan = not validation.passed and state["iteration_count"] < state["max_iterations"]
         feedback = "执行成功" if validation.passed else "; ".join(validation.issues)
 
@@ -300,6 +341,10 @@ class AgentWorkflow:
             "final_result": final_result,
             "trajectory_id": trajectory.trajectory_id,
             "learned_skill": learned_skill,
+            "selected_skill": selected_skill,
+            "task_family": evaluation.task_family if evaluation is not None else state.get("intent", ""),
+            "evaluation_report": evaluation.model_dump() if evaluation is not None else {},
+            "evaluation_score": evaluation.final_score if evaluation is not None else 0.0,
             "messages": [
                 AIMessage(content=f"反思结果: {'成功' if validation.passed else '需要改进'}\n反馈: {feedback}")
             ],
@@ -472,10 +517,41 @@ class AgentWorkflow:
         passed = not issues and all(getattr(result, "success", False) for result in executor_results)
         return ValidationRecord(passed=passed, checks=checks, issues=issues)
 
+    def _evaluate_execution(self, state: AgentState) -> EvaluationReport | None:
+        """优先执行结构化评估，异常时回退旧验证链路。"""
+        try:
+            return self._evaluator.evaluate(
+                intent=state.get("intent", ""),
+                executor_results=state.get("executor_results", []),
+                workspace=state.get("workspace", {}),
+            )
+        except Exception:
+            return None
+
+    def _validation_from_evaluation(self, evaluation: EvaluationReport) -> ValidationRecord:
+        """把结构化评估折叠成兼容旧逻辑的验证结果。"""
+        checks = []
+        if evaluation.passed:
+            checks.append(f"结构化评估通过，得分 {evaluation.final_score:.2f}")
+        checks.extend(
+            finding.message
+            for finding in evaluation.findings
+            if finding.severity == "info"
+        )
+        issues = list(evaluation.hard_failures)
+        if not issues and not evaluation.passed:
+            issues.append(evaluation.summary)
+        return ValidationRecord(
+            passed=evaluation.passed,
+            checks=checks,
+            issues=issues,
+        )
+
     def _build_trajectory(
         self,
         state: AgentState,
         validation: ValidationRecord,
+        evaluation: EvaluationReport | None,
     ) -> AnalysisTrajectory:
         """把一次分析任务保存为可学习轨迹。"""
         attempts: list[AttemptRecord] = []
@@ -505,16 +581,43 @@ class AgentWorkflow:
             session_id=state.get("session_id", "default"),
             user_query=state["user_query"],
             intent=state.get("intent", ""),
+            task_family=evaluation.task_family if evaluation is not None else state.get("intent", ""),
             data_files=[str(path) for path in workspace.get("input_files", [])],
             plan_summary=plan_summary,
             attempts=attempts,
             validation=validation,
+            evaluation_report=evaluation.model_dump() if evaluation is not None else {},
         )
+
+    def _select_associated_skill(self, state: AgentState) -> str | None:
+        """从当前计划和执行结果中提取实际关联的 Skill。"""
+        for step in state.get("execution_results", []):
+            tool_args = step.get("tool_args") or {}
+            if isinstance(tool_args, dict) and tool_args.get("skill_name"):
+                return str(tool_args["skill_name"])
+
+        plan_model = state.get("plan_model")
+        steps = getattr(plan_model, "steps", None)
+        if isinstance(steps, list):
+            for step in steps:
+                tool_args = getattr(step, "tool_args", None) or {}
+                if isinstance(tool_args, dict) and tool_args.get("skill_name"):
+                    return str(tool_args["skill_name"])
+
+        plan = state.get("plan")
+        if plan is not None:
+            for step in plan.get("steps", []):
+                tool_args = step.get("tool_args") or {}
+                if isinstance(tool_args, dict) and tool_args.get("skill_name"):
+                    return str(tool_args["skill_name"])
+
+        return None
 
     def _build_final_result(
         self,
         state: AgentState,
         validation: ValidationRecord,
+        evaluation: EvaluationReport | None,
         learned_skill: str | None,
         trajectory_path: str,
     ) -> str:
@@ -554,6 +657,61 @@ class AgentWorkflow:
         lines.append(f"- 轨迹文件：{trajectory_path}")
 
         return "\n".join(lines)
+
+    def _write_memory_records(
+        self,
+        *,
+        state: AgentState,
+        validation: ValidationRecord,
+        evaluation: EvaluationReport | None,
+        final_result: str,
+        learned_skill: str | None,
+        trajectory: AnalysisTrajectory,
+    ) -> None:
+        """把本次任务沉淀到长期记忆。"""
+        if self._memory_manager is None:
+            return
+
+        with suppress(Exception):
+            self._memory_manager.add_memory(
+                messages=[
+                    {"role": "user", "content": state["user_query"]},
+                    {"role": "assistant", "content": final_result[:4000]},
+                ],
+                user_id=self._user_id,
+                session_id=state.get("session_id"),
+                metadata={
+                    "type": "conversation",
+                    "intent": state.get("intent", ""),
+                    "passed": validation.passed,
+                    "evaluation_score": evaluation.final_score if evaluation is not None else 0.0,
+                    "task_family": evaluation.task_family if evaluation is not None else state.get("intent", ""),
+                    "trajectory_id": trajectory.trajectory_id,
+                    "learned_skill": learned_skill or "",
+                    "selected_skill": self._select_associated_skill(state) or "",
+                },
+            )
+
+        with suppress(Exception):
+            if validation.passed:
+                method = learned_skill or state.get("intent") or "data_analysis"
+                self._memory_manager.record_analysis_method(
+                    user_id=self._user_id,
+                    method=method,
+                    context=state["user_query"][:200],
+                )
+
+        with suppress(Exception):
+            workspace = state.get("workspace", {})
+            input_files = [Path(str(path)) for path in workspace.get("input_files", [])]
+            if input_files:
+                suffixes = [path.suffix.lower() or "unknown" for path in input_files]
+                characteristics = f"{len(input_files)} 个输入文件，类型: {', '.join(sorted(set(suffixes)))}"
+                self._memory_manager.record_data_characteristics(
+                    user_id=self._user_id,
+                    characteristics=characteristics,
+                    data_type=",".join(sorted(set(suffixes))),
+                )
 
     def build_workflow(self) -> StateGraph:
         """构建工作流图
@@ -600,12 +758,95 @@ class AgentWorkflow:
         Returns:
             编译后的工作流
         """
+        return self._compile_with_checkpointer(self._checkpointer)
+
+    def _compile_with_checkpointer(self, checkpointer: Any | None = None) -> Any:
+        """使用指定 checkpointer 编译工作流。"""
         if self._workflow is None:
             self.build_workflow()
 
         assert self._workflow is not None
-        self._compiled_workflow = self._workflow.compile(checkpointer=self._checkpointer)
+        active_checkpointer = checkpointer or self._checkpointer or MemorySaver()
+        self._checkpointer = active_checkpointer
+        self._compiled_workflow = self._workflow.compile(checkpointer=active_checkpointer)
+        self._compiled_checkpointer_id = id(active_checkpointer)
         return self._compiled_workflow
+
+    async def ensure_compiled(self) -> Any:
+        """确保工作流使用持久化 checkpointer 编译。"""
+        checkpointer = await get_workflow_checkpoint_manager().get_checkpointer()
+        if (
+            self._compiled_workflow is None
+            or self._compiled_checkpointer_id != id(checkpointer)
+        ):
+            return self._compile_with_checkpointer(checkpointer)
+        return self._compiled_workflow
+
+    async def get_state_snapshot(self, thread_id: str) -> StateSnapshot | None:
+        """获取指定线程的持久化状态快照。"""
+        await self.ensure_compiled()
+        assert self._compiled_workflow is not None
+
+        try:
+            snapshot = await self._compiled_workflow.aget_state(
+                {"configurable": {"thread_id": thread_id}}
+            )
+        except Exception:
+            return None
+
+        if snapshot is None:
+            return None
+        if not snapshot.values and not snapshot.next:
+            return None
+        return cast(StateSnapshot, snapshot)
+
+    async def get_checkpoint_status(self, thread_id: str) -> dict[str, Any]:
+        """返回线程的 checkpoint 状态。"""
+        snapshot = await self.get_state_snapshot(thread_id)
+        if snapshot is None:
+            return {
+                "available": False,
+                "resumable": False,
+                "next_nodes": [],
+                "created_at": None,
+                "config": {},
+                "summary": {},
+            }
+
+        state_values = cast(dict[str, Any], snapshot.values or {})
+        return {
+            "available": True,
+            "resumable": bool(snapshot.next),
+            "next_nodes": list(snapshot.next),
+            "created_at": snapshot.created_at,
+            "config": dict(snapshot.config or {}),
+            "summary": {
+                "intent": state_values.get("intent", ""),
+                "iteration_count": state_values.get("iteration_count", 0),
+                "final_result": state_values.get("final_result", ""),
+                "has_plan": state_values.get("plan") is not None,
+            },
+        }
+
+    async def resume(
+        self,
+        thread_id: str,
+        *,
+        interrupt_before: list[str] | None = None,
+        interrupt_after: list[str] | None = None,
+    ) -> AgentState:
+        """从持久化 checkpoint 恢复执行。"""
+        await self.ensure_compiled()
+        assert self._compiled_workflow is not None
+        config = {"configurable": {"thread_id": thread_id}}
+        result = await self._compiled_workflow.ainvoke(
+            None,
+            config,
+            interrupt_before=interrupt_before,
+            interrupt_after=interrupt_after,
+            durability=self._durability_mode,
+        )
+        return cast(AgentState, result)
 
     async def run(
         self,
@@ -613,6 +854,9 @@ class AgentWorkflow:
         thread_id: str = "default",
         context: dict[str, Any] | None = None,
         user_context: dict[str, Any] | None = None,
+        *,
+        interrupt_before: list[str] | None = None,
+        interrupt_after: list[str] | None = None,
     ) -> AgentState:
         """运行工作流
 
@@ -623,8 +867,7 @@ class AgentWorkflow:
         Returns:
             最终状态
         """
-        if self._compiled_workflow is None:
-            self.compile()
+        await self.ensure_compiled()
 
         assert self._compiled_workflow is not None
         effective_context = user_context if user_context is not None else context
@@ -637,7 +880,13 @@ class AgentWorkflow:
         initial_state["workspace"] = workspace
         config = {"configurable": {"thread_id": thread_id}}
 
-        result = await self._compiled_workflow.ainvoke(initial_state, config)
+        result = await self._compiled_workflow.ainvoke(
+            initial_state,
+            config,
+            interrupt_before=interrupt_before,
+            interrupt_after=interrupt_after,
+            durability=self._durability_mode,
+        )
         return result  # type: ignore[return-value,no-any-return]
 
     def get_workflow_graph(self) -> str:

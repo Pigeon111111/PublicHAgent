@@ -1,0 +1,13 @@
+{
+  "family": "descriptive_analysis",
+  "intents": ["descriptive_analysis"],
+  "required_json_fields": [
+    "analysis_method",
+    "source_file",
+    "shape",
+    "columns",
+    "missing_values"
+  ],
+  "report_keywords": ["分析方法", "数据文件", "字段", "缺失值"],
+  "statistical_mode": "descriptive"
+}

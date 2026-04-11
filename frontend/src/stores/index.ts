@@ -14,11 +14,17 @@ export const useChatStore = defineStore('chat', () => {
   const taskEvents = ref<TaskEvent[]>([])
   const lastError = ref('')
   const interruptRequested = ref(false)
+  const canResume = ref(false)
+  const currentSessionId = ref('')
+  const lastAnalysisId = ref('')
 
   const messageCount = computed(() => messages.value.length)
 
   function addMessage(message: Message) {
     messages.value.push(message)
+    if (message.analysis_id) {
+      lastAnalysisId.value = message.analysis_id
+    }
     if (currentConversation.value) {
       currentConversation.value.messages.push(message)
       currentConversation.value.message_count = currentConversation.value.messages.length
@@ -31,6 +37,8 @@ export const useChatStore = defineStore('chat', () => {
     taskEvents.value = []
     lastError.value = ''
     interruptRequested.value = false
+    canResume.value = false
+    lastAnalysisId.value = ''
   }
 
   function setConnected(connected: boolean) {
@@ -71,6 +79,18 @@ export const useChatStore = defineStore('chat', () => {
     interruptRequested.value = requested
   }
 
+  function setCanResume(resumable: boolean) {
+    canResume.value = resumable
+  }
+
+  function setCurrentSessionId(sessionId: string) {
+    currentSessionId.value = sessionId
+  }
+
+  function setLastAnalysisId(analysisId: string) {
+    lastAnalysisId.value = analysisId
+  }
+
   function appendStreamContent(content: string) {
     streamingContent.value += content
   }
@@ -100,6 +120,9 @@ export const useChatStore = defineStore('chat', () => {
     taskEvents,
     lastError,
     interruptRequested,
+    canResume,
+    currentSessionId,
+    lastAnalysisId,
     messageCount,
     addMessage,
     clearMessages,
@@ -110,6 +133,9 @@ export const useChatStore = defineStore('chat', () => {
     clearTaskEvents,
     setLastError,
     setInterruptRequested,
+    setCanResume,
+    setCurrentSessionId,
+    setLastAnalysisId,
     appendStreamContent,
     clearStreamContent,
     setCurrentConversation,

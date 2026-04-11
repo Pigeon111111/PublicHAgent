@@ -338,6 +338,30 @@ class TestChartGenerationTool:
 
         assert result.startswith("data:image/png;base64,")
 
+    def test_chinese_title_does_not_raise_glyph_warning(self, recwarn: pytest.WarningsRecorder) -> None:
+        """测试中文标题绘图不会触发缺字告警"""
+        data = [
+            {"变量A": 1, "变量B": 2},
+            {"变量A": 2, "变量B": 4},
+            {"变量A": 3, "变量B": 6},
+        ]
+
+        tool = ChartGenerationTool()
+        result = tool.run(
+            data=data,
+            chart_type="correlation_matrix",
+            title="变量相关性矩阵",
+            output_format="base64",
+        )
+
+        assert result.startswith("data:image/png;base64,")
+        glyph_warnings = [
+            warning
+            for warning in recwarn.list
+            if "Glyph" in str(warning.message) and "missing from font" in str(warning.message)
+        ]
+        assert glyph_warnings == []
+
 
 class TestReportGenerationTool:
     """测试 ReportGenerationTool"""

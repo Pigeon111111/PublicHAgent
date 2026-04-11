@@ -6,7 +6,7 @@
 import json
 import logging
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +15,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import config, files, history, learning, skills, user_config
+from backend.api.routes import config, files, history, learning, methods, skills, user_config
 from backend.api.websocket import router as websocket_router
+from backend.core.checkpoint_store import (
+    close_workflow_checkpoint_manager,
+    get_workflow_checkpoint_manager,
+)
+from backend.tools.mcp.runtime import close_mcp_tool_runtime
+from backend.tools.registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +124,18 @@ async def lifespan(app: FastAPI) -> Any:
     logs_dir = Path("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
 
+    with suppress(Exception):
+        await get_workflow_checkpoint_manager().get_checkpointer()
+
+    try:
+        await get_tool_registry().refresh_mcp_tools()
+    except Exception as exc:
+        logger.warning("MCP 工具预热失败，将在运行期继续重试: %s", exc)
+
     yield
 
+    await close_mcp_tool_runtime()
+    await close_workflow_checkpoint_manager()
     logger.info("关闭应用")
 
 
@@ -178,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(websocket_router, prefix="/ws", tags=["websocket"])
     app.include_router(files.router, prefix="/api", tags=["files"])
     app.include_router(history.router, prefix="/api", tags=["history"])
+    app.include_router(methods.router, prefix="/api", tags=["methods"])
     app.include_router(config.router, prefix="/api", tags=["config"])
     app.include_router(skills.router, prefix="/api", tags=["skills"])
     app.include_router(learning.router, prefix="/api", tags=["learning"])

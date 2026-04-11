@@ -1,7 +1,6 @@
-"""流式输出协议模块
+"""WebSocket 消息协议。"""
 
-定义消息格式、消息序列化和进度推送。
-"""
+from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
@@ -11,7 +10,7 @@ from pydantic import BaseModel, Field
 
 
 class MessageType(str, Enum):
-    """消息类型"""
+    """消息类型。"""
 
     USER = "user"
     AGENT = "agent"
@@ -19,10 +18,11 @@ class MessageType(str, Enum):
     PROGRESS = "progress"
     ERROR = "error"
     INTERRUPT = "interrupt"
+    RESUME = "resume"
 
 
 class BaseMessage(BaseModel):
-    """消息基类"""
+    """消息基类。"""
 
     type: MessageType
     session_id: str
@@ -30,7 +30,7 @@ class BaseMessage(BaseModel):
 
 
 class UserMessage(BaseMessage):
-    """用户消息"""
+    """用户消息。"""
 
     type: MessageType = MessageType.USER
     content: str = Field(description="用户输入内容")
@@ -39,26 +39,31 @@ class UserMessage(BaseMessage):
 
 
 class AgentMessage(BaseMessage):
-    """Agent 响应消息"""
+    """Agent 响应消息。"""
 
     type: MessageType = MessageType.AGENT
     content: str = Field(description="响应内容")
-    intent: str = Field(default="", description="识别的意图")
+    intent: str = Field(default="", description="识别出的意图")
     plan: dict[str, Any] | None = Field(default=None, description="执行计划")
     is_streaming: bool = Field(default=False, description="是否为流式输出")
     is_final: bool = Field(default=True, description="是否为最终响应")
+    evaluation_report: dict[str, Any] = Field(default_factory=dict, description="评估摘要")
+    task_family: str = Field(default="", description="任务家族")
+    evaluation_score: float = Field(default=0.0, description="评估得分")
+    analysis_id: str = Field(default="", description="分析记录 ID")
+    trajectory_id: str = Field(default="", description="轨迹 ID")
 
 
 class StatusMessage(BaseMessage):
-    """状态更新消息"""
+    """状态消息。"""
 
     type: MessageType = MessageType.STATUS
-    status: str = Field(description="状态: connected, processing, completed, interrupted, error")
+    status: str = Field(description="状态")
     message: str = Field(default="", description="状态描述")
 
 
 class ProgressMessage(BaseMessage):
-    """进度更新消息"""
+    """进度消息。"""
 
     type: MessageType = MessageType.PROGRESS
     stage: str = Field(description="当前阶段")
@@ -68,16 +73,22 @@ class ProgressMessage(BaseMessage):
 
 
 class ErrorMessage(BaseMessage):
-    """错误消息"""
+    """错误消息。"""
 
     type: MessageType = MessageType.ERROR
-    error_code: str = Field(description="错误代码")
+    error_code: str = Field(description="错误码")
     error_message: str = Field(description="错误描述")
     details: dict[str, Any] = Field(default_factory=dict, description="错误详情")
 
 
+class ResumeMessage(BaseMessage):
+    """恢复执行消息。"""
+
+    type: MessageType = MessageType.RESUME
+
+
 class MessageFactory:
-    """消息工厂类"""
+    """消息工厂。"""
 
     @staticmethod
     def create_user_message(
@@ -86,7 +97,6 @@ class MessageFactory:
         user_id: str = "default",
         context: dict[str, Any] | None = None,
     ) -> UserMessage:
-        """创建用户消息"""
         return UserMessage(
             session_id=session_id,
             content=content,
@@ -102,8 +112,12 @@ class MessageFactory:
         plan: dict[str, Any] | None = None,
         is_streaming: bool = False,
         is_final: bool = True,
+        evaluation_report: dict[str, Any] | None = None,
+        task_family: str = "",
+        evaluation_score: float = 0.0,
+        analysis_id: str = "",
+        trajectory_id: str = "",
     ) -> AgentMessage:
-        """创建 Agent 消息"""
         return AgentMessage(
             session_id=session_id,
             content=content,
@@ -111,20 +125,16 @@ class MessageFactory:
             plan=plan,
             is_streaming=is_streaming,
             is_final=is_final,
+            evaluation_report=evaluation_report or {},
+            task_family=task_family,
+            evaluation_score=evaluation_score,
+            analysis_id=analysis_id,
+            trajectory_id=trajectory_id,
         )
 
     @staticmethod
-    def create_status(
-        session_id: str,
-        status: str,
-        message: str = "",
-    ) -> StatusMessage:
-        """创建状态消息"""
-        return StatusMessage(
-            session_id=session_id,
-            status=status,
-            message=message,
-        )
+    def create_status(session_id: str, status: str, message: str = "") -> StatusMessage:
+        return StatusMessage(session_id=session_id, status=status, message=message)
 
     @staticmethod
     def create_progress(
@@ -134,7 +144,6 @@ class MessageFactory:
         message: str = "",
         details: dict[str, Any] | None = None,
     ) -> ProgressMessage:
-        """创建进度消息"""
         return ProgressMessage(
             session_id=session_id,
             stage=stage,
@@ -150,7 +159,6 @@ class MessageFactory:
         error_message: str,
         details: dict[str, Any] | None = None,
     ) -> ErrorMessage:
-        """创建错误消息"""
         return ErrorMessage(
             session_id=session_id,
             error_code=error_code,
@@ -160,48 +168,49 @@ class MessageFactory:
 
 
 def serialize_message(message: BaseModel) -> str:
-    """序列化消息为 JSON 字符串"""
+    """序列化消息。"""
+
     return message.model_dump_json()
 
 
 def deserialize_message(json_str: str) -> BaseModel:
-    """从 JSON 字符串反序列化消息"""
+    """反序列化消息。"""
+
     import json
 
     data = json.loads(json_str)
     message_type = data.get("type", "")
-
     message_classes: dict[str, type[BaseModel]] = {
         MessageType.USER: UserMessage,
         MessageType.AGENT: AgentMessage,
         MessageType.STATUS: StatusMessage,
         MessageType.PROGRESS: ProgressMessage,
         MessageType.ERROR: ErrorMessage,
+        MessageType.RESUME: ResumeMessage,
     }
-
     message_class = message_classes.get(message_type, BaseMessage)
     return message_class(**data)
 
 
 class ProgressTracker:
-    """进度追踪器"""
+    """进度追踪器。"""
 
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
         self._stages: list[dict[str, Any]] = []
-        self._current_stage: str = ""
-        self._current_progress: int = 0
+        self._current_stage = ""
+        self._current_progress = 0
 
     def start_stage(self, stage: str, message: str = "") -> ProgressMessage:
-        """开始新阶段"""
         self._current_stage = stage
         self._current_progress = 0
-        self._stages.append({
-            "stage": stage,
-            "message": message,
-            "start_time": datetime.now().isoformat(),
-        })
-
+        self._stages.append(
+            {
+                "stage": stage,
+                "message": message,
+                "start_time": datetime.now().isoformat(),
+            }
+        )
         return MessageFactory.create_progress(
             session_id=self.session_id,
             stage=stage,
@@ -215,9 +224,7 @@ class ProgressTracker:
         message: str = "",
         details: dict[str, Any] | None = None,
     ) -> ProgressMessage:
-        """更新当前阶段进度"""
         self._current_progress = min(100, max(0, progress))
-
         return MessageFactory.create_progress(
             session_id=self.session_id,
             stage=self._current_stage,
@@ -227,12 +234,10 @@ class ProgressTracker:
         )
 
     def complete_stage(self, message: str = "") -> ProgressMessage:
-        """完成当前阶段"""
         self._current_progress = 100
         if self._stages:
             self._stages[-1]["end_time"] = datetime.now().isoformat()
             self._stages[-1]["completed"] = True
-
         return MessageFactory.create_progress(
             session_id=self.session_id,
             stage=self._current_stage,
@@ -241,7 +246,8 @@ class ProgressTracker:
         )
 
     def get_summary(self) -> dict[str, Any]:
-        """获取进度摘要"""
+        """返回当前追踪概况。"""
+
         return {
             "session_id": self.session_id,
             "current_stage": self._current_stage,

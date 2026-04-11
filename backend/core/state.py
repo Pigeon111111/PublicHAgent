@@ -53,6 +53,10 @@ class AgentState(TypedDict):
     executor_results: list[Any]
     trajectory_id: str
     learned_skill: str | None
+    selected_skill: str | None
+    task_family: str
+    evaluation_report: dict[str, Any]
+    evaluation_score: float
 
 
 def create_initial_state(
@@ -88,6 +92,10 @@ def create_initial_state(
         executor_results=[],
         trajectory_id="",
         learned_skill=None,
+        selected_skill=None,
+        task_family="",
+        evaluation_report={},
+        evaluation_score=0.0,
     )
 
 

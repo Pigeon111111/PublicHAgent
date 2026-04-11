@@ -18,6 +18,7 @@ from backend.agents.executor.context import IsolatedExecutionContext
 from backend.agents.executor.schemas import (
     CodeFixRequest,
     CodeFixResult,
+    CodeReflection,
     ExecutionResult,
     GeneratedCode,
 )
@@ -65,6 +66,17 @@ class ExecutorAgent:
 3. 检查数据类型
 4. 检查导入语句
 5. 添加必要的错误处理"""
+
+    CODE_REFLECTION_PROMPT = """你是代码执行反思器。
+
+请根据步骤目标、代码、执行结果和产物判断当前结果是否可以接受。
+
+判断标准：
+1. 是否成功执行
+2. 是否满足步骤描述和预期输出
+3. 是否生成了有用结果或产物
+4. 如果不满足，明确指出问题并给出下一步修复方向
+"""
 
     def __init__(
         self,
@@ -260,6 +272,80 @@ class ExecutorAgent:
             artifacts=result.artifacts,
         )
 
+    async def reflect_execution(
+        self,
+        step: ExecutionStep,
+        *,
+        code: str,
+        result: ExecutionResult,
+        context: dict[str, Any] | IsolatedExecutionContext | None = None,
+        attempt: int = 1,
+    ) -> CodeReflection:
+        """对代码执行结果做一次反思，决定是否接受当前结果。"""
+        artifact_files = list((result.artifacts or {}).get("output_files", []))
+        has_useful_output = bool(result.output.strip() or artifact_files)
+
+        fallback_accept = result.success and has_useful_output
+        fallback_issues = [] if fallback_accept else [result.error or "执行结果未达到预期输出"]
+
+        try:
+            llm = self._get_llm()
+        except Exception:
+            return CodeReflection(
+                accept=fallback_accept,
+                reasoning="LLM 不可用，使用启发式规则判断执行结果。",
+                issues=fallback_issues,
+                next_action="" if fallback_accept else "修复代码并重试",
+            )
+
+        context_dict = context.to_dict() if isinstance(context, IsolatedExecutionContext) else (context or {})
+        prompt = f"""步骤描述: {step.description}
+预期输出: {step.expected_output}
+当前尝试: {attempt}/{self.MAX_RETRIES}
+执行是否成功: {result.success}
+执行输出:
+{result.output[:2000]}
+
+执行错误:
+{result.error[:1500]}
+
+产物:
+{artifact_files}
+
+代码:
+```python
+{code[:4000]}
+```
+
+上下文:
+{self._format_context(context_dict) if context_dict else "无"}
+"""
+
+        try:
+            reflection = await asyncio.wait_for(
+                invoke_structured_output(
+                    llm,
+                    [
+                        SystemMessage(content=self.CODE_REFLECTION_PROMPT),
+                        HumanMessage(content=prompt),
+                    ],
+                    CodeReflection,
+                ),
+                timeout=20,
+            )
+        except Exception:
+            reflection = None
+
+        if isinstance(reflection, CodeReflection):
+            return reflection
+
+        return CodeReflection(
+            accept=fallback_accept,
+            reasoning="反思模型不可用，回退到启发式规则。",
+            issues=fallback_issues,
+            next_action="" if fallback_accept else "修复代码并重试",
+        )
+
     async def execute_step(
         self,
         step: ExecutionStep,
@@ -279,25 +365,54 @@ class ExecutorAgent:
 
         generated_code = await self.generate_code(step, context)
         code = self._prepare_code(generated_code)
+        latest_result = ExecutionResult(
+            success=False,
+            output="",
+            error="未开始执行",
+            code=code,
+            execution_time=0.0,
+        )
 
-        for attempt in range(self.MAX_RETRIES):
+        for attempt in range(1, self.MAX_RETRIES + 1):
             result = await asyncio.to_thread(self.execute_code, code)
+            reflection = await self.reflect_execution(
+                step,
+                code=code,
+                result=result,
+                context=context,
+                attempt=attempt,
+            )
+            result.attempts = attempt
+            result.reflection = reflection.model_dump()
+            latest_result = result
 
-            if result.success:
+            if result.success and reflection.accept:
                 return result
 
-            if attempt < self.MAX_RETRIES - 1:
+            if attempt < self.MAX_RETRIES:
                 context_dict = context.to_dict() if isinstance(context, IsolatedExecutionContext) else context
+                issues_text = "\n".join(f"- {issue}" for issue in reflection.issues) or "- 无"
                 fix_request = CodeFixRequest(
                     original_code=code,
-                    error_message=result.error,
-                    attempt=attempt + 1,
-                    context=context_dict or {},
+                    error_message=(
+                        f"执行错误:\n{result.error or '无'}\n\n"
+                        f"反思结论:\n{reflection.reasoning}\n\n"
+                        f"发现问题:\n{issues_text}\n\n"
+                        f"下一步建议:\n{reflection.next_action or '请修复后重试'}"
+                    ),
+                    attempt=attempt,
+                    context={
+                        **(context_dict or {}),
+                        "step_description": step.description,
+                        "expected_output": step.expected_output,
+                        "artifacts": result.artifacts,
+                        "reflection": result.reflection,
+                    },
                 )
                 fix_result = await self.fix_code(fix_request)
                 code = fix_result.fixed_code
 
-        return result
+        return latest_result
 
     async def _execute_with_tool(
         self,
@@ -317,7 +432,7 @@ class ExecutorAgent:
 
         try:
             registry = get_tool_registry()
-            result = registry.execute(step.tool_name, **step.tool_args)
+            result = await registry.execute_async(step.tool_name, **step.tool_args)
             execution_time = time.time() - start_time
 
             return ExecutionResult(

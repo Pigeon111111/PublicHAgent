@@ -17,11 +17,13 @@ const props = defineProps<{
   isConnected: boolean
   lastError: string
   interruptRequested: boolean
+  canResume: boolean
 }>()
 
 const emit = defineEmits<{
   send: [content: string]
   interrupt: []
+  resume: []
 }>()
 
 const inputContent = ref('')
@@ -47,6 +49,7 @@ const connectionText = computed(() => props.isConnected ? '已连接' : '未连�
 const runText = computed(() => {
   if (props.interruptRequested) return '正在中断'
   if (props.isProcessing) return '运行中'
+  if (props.canResume) return '可恢复'
   return '空闲'
 })
 
@@ -113,7 +116,7 @@ onMounted(scrollToBottom)
           />
           <AgentMessage
             v-else-if="msg.role === 'assistant'"
-            :content="msg.content"
+            :message="msg"
             :render-markdown="renderMarkdown"
           />
           <SystemMessage
@@ -127,7 +130,7 @@ onMounted(scrollToBottom)
           class="streaming-message"
         >
           <AgentMessage
-            :content="streamingContent"
+            :message="{ role: 'assistant', content: streamingContent, timestamp: new Date().toISOString() }"
             :render-markdown="renderMarkdown"
             :is-streaming="true"
           />
@@ -165,6 +168,14 @@ onMounted(scrollToBottom)
           >
             <el-icon><VideoPause /></el-icon>
             停止
+          </el-button>
+          <el-button
+            v-else-if="canResume && isConnected"
+            type="warning"
+            @click="emit('resume')"
+          >
+            <el-icon><RefreshRight /></el-icon>
+            恢复上次任务
           </el-button>
           <el-button
             type="primary"

@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from backend.agents.memory.factory import reset_memory_manager_cache
 from backend.models.user_config import (
     APIKeyUpdate,
     CustomModelConfig,
@@ -89,6 +90,7 @@ async def update_user_config(
 
         updates = request.model_dump(exclude_unset=True)
         config = storage.update(user_id, updates)
+        reset_memory_manager_cache()
 
         if config is None:
             config = UserConfig(user_id=user_id)
@@ -121,6 +123,7 @@ async def set_api_key(request: APIKeyUpdate) -> dict[str, Any]:
     try:
         storage = get_user_config_storage()
         storage.set_api_key("default", request.provider, request.api_key)
+        reset_memory_manager_cache()
 
         return {
             "success": True,
@@ -175,6 +178,7 @@ async def delete_api_key(provider: str) -> dict[str, Any]:
     try:
         storage = get_user_config_storage()
         storage.set_api_key("default", provider, "")
+        reset_memory_manager_cache()
 
         return {
             "success": True,
@@ -248,6 +252,7 @@ async def create_custom_model(request: CustomModelCreate) -> dict[str, Any]:
         )
 
         storage.add_custom_model("default", request.model_name, config)
+        reset_memory_manager_cache()
 
         return {
             "success": True,
@@ -320,6 +325,7 @@ async def update_custom_model(
 
         updates = request.model_dump(exclude_unset=True)
         config = storage.update_custom_model("default", model_name, updates)
+        reset_memory_manager_cache()
 
         if config is None:
             raise HTTPException(status_code=404, detail=f"模型不存在: {model_name}")
@@ -347,6 +353,7 @@ async def delete_custom_model(model_name: str) -> dict[str, Any]:
     try:
         storage = get_user_config_storage()
         success = storage.delete_custom_model("default", model_name)
+        reset_memory_manager_cache()
 
         if not success:
             raise HTTPException(status_code=404, detail=f"模型不存在: {model_name}")
@@ -376,6 +383,7 @@ async def set_model_selection(request: ModelSelection) -> dict[str, Any]:
     try:
         storage = get_user_config_storage()
         storage.set_model_selection("default", request.model_type, request.model_name)
+        reset_memory_manager_cache()
 
         return {
             "success": True,

@@ -21,6 +21,7 @@ class ToolRegistry:
     def __init__(self) -> None:
         """初始化工具注册表"""
         self._tools: dict[str, BaseTool] = {}
+        self._dynamic_sources: dict[str, set[str]] = {}
         self._guard = ToolGuard(
             ToolSecurityPolicy(
                 allowed_paths=[
@@ -49,6 +50,19 @@ class ToolRegistry:
             raise ToolError(f"工具已存在: {tool.name}")
         self._tools[tool.name] = tool
 
+    def sync_dynamic_tools(self, source: str, tools: list[BaseTool]) -> None:
+        """同步动态工具集合，如 MCP 工具。"""
+        current_names = self._dynamic_sources.get(source, set())
+        incoming_names = {tool.name for tool in tools}
+
+        for tool_name in current_names - incoming_names:
+            self._tools.pop(tool_name, None)
+
+        for tool in tools:
+            self._tools[tool.name] = tool
+
+        self._dynamic_sources[source] = incoming_names
+
     def unregister(self, name: str) -> None:
         """注销工具
 
@@ -61,6 +75,8 @@ class ToolRegistry:
         if name not in self._tools:
             raise ToolError(f"工具不存在: {name}")
         del self._tools[name]
+        for source_names in self._dynamic_sources.values():
+            source_names.discard(name)
 
     def get(self, name: str) -> BaseTool:
         """获取工具
@@ -190,9 +206,24 @@ class ToolRegistry:
         validated_args = tool.validate_args(**kwargs)
         return self._guard.execute_with_guard(tool, validated_args.model_dump())
 
+    async def execute_async(self, name: str, **kwargs: Any) -> Any:
+        """异步执行工具。"""
+        tool = self.get(name)
+        validated_args = tool.validate_args(**kwargs)
+        return await self._guard.execute_with_guard_async(tool, validated_args.model_dump())
+
+    async def refresh_mcp_tools(self, force: bool = False) -> list[BaseTool]:
+        """刷新 MCP 工具到注册表。"""
+        from backend.tools.mcp.runtime import get_mcp_tool_runtime
+
+        tools = await get_mcp_tool_runtime().load_tools(force=force)
+        self.sync_dynamic_tools("mcp", tools)
+        return tools
+
     def clear(self) -> None:
         """清空所有工具"""
         self._tools.clear()
+        self._dynamic_sources.clear()
 
 
 # 全局工具注册表实例

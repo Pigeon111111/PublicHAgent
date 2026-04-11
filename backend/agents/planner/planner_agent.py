@@ -7,6 +7,7 @@
 """
 
 import asyncio
+from contextlib import suppress
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -21,8 +22,10 @@ from backend.agents.planner.schemas import (
     ToolSelection,
 )
 from backend.learning.skill_learning import SkillLearningService
+from backend.storage.history_storage import get_history_storage
 from backend.tools.registry import get_tool_registry
 from backend.tools.skills.loader import SkillLoader
+from backend.tools.skills.registry import get_skill_registry
 
 
 class PlannerAgent:
@@ -82,10 +85,15 @@ class PlannerAgent:
 
 {tools_capability}
 
-## 可用 Skills
+## 方法家族摘要
 
-{skills_capability}
+{family_capability}
 
+## 当前展开的细分方法
+
+{variant_capability}
+
+如果没有合适的细分方法，请明确指出“建议学习新细分方法”。
 请根据以上工具能力信息，制定执行计划。如果发现能力缺口，请提供 Skill 创建/更新建议。
 """
 
@@ -150,32 +158,69 @@ class PlannerAgent:
         except Exception:
             return "工具能力描述获取失败"
 
-    def _get_skills_capability_description(self) -> str:
-        """获取 Skills 能力描述"""
+    def _get_preferred_variants(self, user_id: str | None) -> dict[str, str]:
+        """读取用户偏好的细分方法。"""
+        if not user_id:
+            return {}
         try:
-            skills = self._skill_loader.load_all_skills()
-            if not skills:
-                return "暂无可用 Skills"
-
-            lines = []
-            for skill in skills:
-                lines.append(f"### {skill.name}")
-                lines.append(f"描述: {skill.description}")
-                if skill.capability.capability:
-                    lines.append(f"能力: {skill.capability.capability}")
-                if skill.capability.limitations:
-                    lines.append("限制:")
-                    for limit in skill.capability.limitations:
-                        lines.append(f"  - {limit}")
-                if skill.capability.applicable_scenarios:
-                    lines.append("适用场景:")
-                    for scenario in skill.capability.applicable_scenarios:
-                        lines.append(f"  - {scenario}")
-                lines.append("")
-
-            return "\n".join(lines)
+            return get_history_storage().list_preferred_variants(user_id=user_id)
         except Exception:
-            return "Skills 能力描述获取失败"
+            return {}
+
+    def _get_skills_capability_description(
+        self,
+        user_query: str,
+        *,
+        user_id: str | None = None,
+    ) -> tuple[str, str]:
+        """获取 family 摘要与当前展开变体描述。"""
+        try:
+            preferred_variants = self._get_preferred_variants(user_id)
+            family_context = self._skill_learning.build_family_context(
+                user_query,
+                preferred_variants=preferred_variants,
+            )
+            families = family_context.get("families", [])
+            variants = family_context.get("variants", [])
+            if not families:
+                return "暂无可用方法家族", "暂无可用细分方法"
+
+            family_lines = []
+            for family in families:
+                family_lines.append(f"### {family['family']}")
+                family_lines.append(f"能力: {family['description']}")
+                family_lines.append(
+                    f"变体数: {family['variant_count']}，最近成功率: {family['success_rate']:.2f}，最近使用次数: {family['recent_usage_count']}"
+                )
+                if family.get("preferred_variant"):
+                    family_lines.append(f"用户偏好细分方法: {family['preferred_variant']}")
+                family_lines.append("")
+
+            variant_lines = []
+            for variant in variants:
+                variant_lines.append(f"### {variant['method_variant']}")
+                variant_lines.append(f"Skill: {variant['name']}")
+                variant_lines.append(f"说明: {variant['description']}")
+                if variant.get("capability"):
+                    variant_lines.append(f"能力: {variant['capability']}")
+                variant_lines.append(
+                    f"状态: {variant['lifecycle_state']}，验证通过率: {variant['verifier_pass_rate']:.2f}，使用次数: {variant['usage_count']}"
+                )
+                if variant.get("input_schema_signature"):
+                    variant_lines.append(f"输入结构签名: {variant['input_schema_signature']}")
+                if variant.get("limitations"):
+                    variant_lines.append("限制:")
+                    variant_lines.extend(f"  - {item}" for item in variant["limitations"][:5])
+                if variant.get("is_preferred"):
+                    variant_lines.append("该变体是用户当前偏好。")
+                variant_lines.append("")
+
+            if family_context.get("needs_new_variant"):
+                variant_lines.append("当前没有足够匹配的细分方法，建议学习新细分方法。")
+
+            return "\n".join(family_lines).strip(), "\n".join(variant_lines).strip()
+        except Exception:
+            return "方法家族摘要获取失败", "细分方法摘要获取失败"
 
     async def create_plan(
         self,
@@ -195,6 +240,9 @@ class PlannerAgent:
         Returns:
             执行计划
         """
+        with suppress(Exception):
+            await get_tool_registry().refresh_mcp_tools()
+
         available_tools = self._get_available_tools()
 
         context_str = ""
@@ -205,13 +253,17 @@ class PlannerAgent:
         if self._memory_manager and user_id:
             memory_context = self._load_memory_context(user_id, user_query)
 
-        # 获取工具和 Skills 能力描述
+        # 获取工具和 Skills 分层能力描述
         tools_capability = self._get_tools_capability_description()
-        skills_capability = self._get_skills_capability_description()
+        family_capability, variant_capability = self._get_skills_capability_description(
+            user_query,
+            user_id=user_id,
+        )
 
         capability_info = self.CAPABILITY_CHECK_PROMPT.format(
             tools_capability=tools_capability,
-            skills_capability=skills_capability,
+            family_capability=family_capability,
+            variant_capability=variant_capability,
         )
 
         user_message = f"""用户查询: {user_query}
@@ -239,11 +291,16 @@ class PlannerAgent:
             )
 
             if isinstance(result, ExecutionPlan):
-                return result
+                return self._attach_variant_hints(
+                    result,
+                    user_query=user_query,
+                    intent=intent,
+                    user_id=user_id,
+                )
         except Exception:
             pass
 
-        return self._create_fallback_plan(user_query)
+        return self._create_fallback_plan(user_query, intent=intent, user_id=user_id)
 
     async def replan(
         self,
@@ -257,6 +314,9 @@ class PlannerAgent:
         Returns:
             新的执行计划
         """
+        with suppress(Exception):
+            await get_tool_registry().refresh_mcp_tools()
+
         llm = self._get_llm()
         available_tools = self._get_available_tools()
 
@@ -302,6 +362,9 @@ class PlannerAgent:
         Returns:
             工具选择结果
         """
+        with suppress(Exception):
+            await get_tool_registry().refresh_mcp_tools()
+
         if available_tools is None:
             available_tools = self._get_available_tools()
 
@@ -484,9 +547,61 @@ class PlannerAgent:
 步骤列表:
 {steps_str}"""
 
-    def _create_fallback_plan(self, user_query: str) -> ExecutionPlan:
+    def _attach_variant_hints(
+        self,
+        plan: ExecutionPlan,
+        *,
+        user_query: str,
+        intent: str,
+        user_id: str | None,
+    ) -> ExecutionPlan:
+        """为常规计划补充 Skill 关联信息，便于后续评估与审阅。"""
+        if not intent:
+            return plan
+
+        preferred_variant = self._get_preferred_variants(user_id).get(intent, "")
+        skill_name = self._skill_learning.find_reusable_skill(
+            user_query,
+            family=intent,
+            preferred_variant=preferred_variant,
+        )
+        if not skill_name:
+            return plan
+
+        method_variant = preferred_variant
+        try:
+            skill = get_skill_registry().get(skill_name)
+            method_variant = skill.metadata.method_variant or preferred_variant or skill.name
+        except Exception:
+            method_variant = preferred_variant or skill_name
+
+        for step in plan.steps:
+            if step.tool_name not in {"", "python_code"}:
+                continue
+            if "skill_name" not in step.tool_args:
+                step.tool_args["skill_name"] = skill_name
+            if method_variant and "method_variant" not in step.tool_args:
+                step.tool_args["method_variant"] = method_variant
+            if intent and "analysis_type" not in step.tool_args:
+                step.tool_args["analysis_type"] = intent
+            break
+
+        return plan
+
+    def _create_fallback_plan(
+        self,
+        user_query: str,
+        *,
+        intent: str = "",
+        user_id: str | None = None,
+    ) -> ExecutionPlan:
         """在 LLM 不可用时创建可执行的回退计划。"""
-        reusable_skill = self._skill_learning.find_reusable_skill(user_query)
+        preferred_variant = self._get_preferred_variants(user_id).get(intent or "", "")
+        reusable_skill = self._skill_learning.find_reusable_skill(
+            user_query,
+            family=intent or None,
+            preferred_variant=preferred_variant,
+        )
         description = "复用已学习 Skill 执行数据分析" if reusable_skill else "执行通用数据分析并沉淀成功路径"
         expected = "在会话输出目录生成 analysis_report.md 和 analysis_result.json"
 
@@ -497,6 +612,8 @@ class PlannerAgent:
         }
         if reusable_skill:
             tool_args["skill_name"] = reusable_skill
+        if intent:
+            tool_args["analysis_type"] = intent
 
         return ExecutionPlan(
             steps=[

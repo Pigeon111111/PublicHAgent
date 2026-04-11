@@ -436,3 +436,92 @@ class TestSkillLoaderIntegration:
             assert skill.name
             assert skill.description
             assert skill.metadata.category
+
+
+class TestHierarchicalSkillMetadata:
+    """测试方法家族与细分变体元数据。"""
+
+    def test_metadata_hierarchy_defaults(self) -> None:
+        metadata = SkillMetadata(
+            name="hierarchical_skill",
+            category="learned-analysis",
+            method_family="regression_analysis",
+            method_variant="logistic_regression",
+            process_signature="sig123",
+            input_schema_signature="schema123",
+            lifecycle_state="candidate",
+            confidence_score=0.82,
+        )
+        assert metadata.normalized_method_family == "regression_analysis"
+        assert metadata.method_variant == "logistic_regression"
+        assert metadata.lifecycle_state == "candidate"
+        assert metadata.is_learned is True
+
+    def test_loader_parses_hierarchical_front_matter(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        skill_dir = skills_dir / "hierarchical_skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: hierarchical_skill
+version: 1.0.0
+description: 分层技能
+category: learned-analysis
+analysis_domain: public_health
+method_family: survival_analysis
+method_variant: cox_ph
+process_signature: proc_sig
+input_schema_signature: input_sig
+verifier_family: survival_analysis
+confidence_score: 0.93
+lifecycle_state: active
+usage_count: 5
+verifier_pass_rate: 0.8
+---
+
+# hierarchical_skill
+
+## 能力描述
+
+**能力范围**：执行 Cox 生存分析
+""",
+            encoding="utf-8",
+        )
+        skill = SkillLoader(skills_dir).load_skill("hierarchical_skill", use_cache=False)
+        assert skill.metadata.analysis_domain == "public_health"
+        assert skill.metadata.method_family == "survival_analysis"
+        assert skill.metadata.method_variant == "cox_ph"
+        assert skill.metadata.lifecycle_state == "active"
+
+    def test_registry_family_and_variant_queries(self, tmp_path: Path) -> None:
+        skills_dir = tmp_path / "skills"
+        skill_dir = skills_dir / "variant_a"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            """---
+name: variant_a
+version: 1.0.0
+description: 回归变体 A
+category: learned-analysis
+method_family: regression_analysis
+method_variant: linear_regression
+lifecycle_state: active
+confidence_score: 0.8
+usage_count: 3
+verifier_pass_rate: 0.9
+---
+
+# variant_a
+## 能力描述
+**能力范围**：执行线性回归
+""",
+            encoding="utf-8",
+        )
+        registry = SkillRegistry(skills_dir)
+        registry.load_all(force_reload=True)
+        family_skills = registry.get_by_method_family("regression_analysis")
+        assert len(family_skills) == 1
+        summary = registry.summarize_method_families()
+        assert any(item["family"] == "regression_analysis" for item in summary)
+        variants = registry.list_method_variants("regression_analysis")
+        assert variants[0]["method_variant"] == "linear_regression"

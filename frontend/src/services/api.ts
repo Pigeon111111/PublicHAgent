@@ -1,11 +1,19 @@
 import axios from 'axios'
 import type {
+  AgentConfig,
+  AnalysisDetailResponse,
+  AnalysisHistoryResponse,
+  Conversation,
+  ConversationListResponse,
+  EvaluationReport,
+  EvaluationReview,
   FileInfo,
   FileListResponse,
-  ConversationListResponse,
-  AnalysisHistoryResponse,
   FullConfig,
-  AgentConfig,
+  MethodFamilyListResponse,
+  MethodVariantListResponse,
+  PreferredVariantState,
+  RerunResponse,
   SandboxConfig,
 } from '@/types'
 
@@ -22,17 +30,14 @@ api.interceptors.response.use(
   (error) => {
     const message = error.response?.data?.detail || error.message || '请求失败'
     return Promise.reject(new Error(message))
-  }
+  },
 )
 
 export async function uploadFile(file: File): Promise<FileInfo> {
   const formData = new FormData()
   formData.append('file', file)
-  
   const response = await axios.post('/api/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000,
   })
   return response.data
@@ -40,14 +45,9 @@ export async function uploadFile(file: File): Promise<FileInfo> {
 
 export async function uploadMultipleFiles(files: File[]): Promise<FileInfo[]> {
   const formData = new FormData()
-  files.forEach((file) => {
-    formData.append('files', file)
-  })
-  
+  files.forEach((file) => formData.append('files', file))
   const response = await axios.post('/api/upload/multiple', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   })
   return response.data
@@ -73,11 +73,11 @@ export async function getConversations(page: number = 1, pageSize: number = 20):
   return api.get('/conversations', { params: { page, page_size: pageSize } })
 }
 
-export async function getConversation(conversationId: string) {
+export async function getConversation(conversationId: string): Promise<Conversation> {
   return api.get(`/conversations/${conversationId}`)
 }
 
-export async function createConversation(title: string = '新对话') {
+export async function createConversation(title: string = '新对话'): Promise<Conversation> {
   return api.post('/conversations', null, { params: { title } })
 }
 
@@ -87,6 +87,47 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 
 export async function getAnalysisHistory(page: number = 1, pageSize: number = 20): Promise<AnalysisHistoryResponse> {
   return api.get('/analysis', { params: { page, page_size: pageSize } })
+}
+
+export async function getAnalysisDetail(analysisId: string): Promise<AnalysisDetailResponse> {
+  return api.get(`/analysis/${analysisId}`)
+}
+
+export async function getAnalysisEvaluation(analysisId: string): Promise<EvaluationReport> {
+  return api.get(`/analysis/${analysisId}/evaluation`)
+}
+
+export async function reviewAnalysisEvaluation(analysisId: string, review: EvaluationReview): Promise<EvaluationReport> {
+  return api.post(`/analysis/${analysisId}/evaluation/review`, review)
+}
+
+export async function rerunAnalysis(analysisId: string): Promise<RerunResponse> {
+  return api.post(`/analysis/${analysisId}/rerun`)
+}
+
+export async function getMethodFamilies(): Promise<MethodFamilyListResponse> {
+  return api.get('/method-families')
+}
+
+export async function getMethodVariants(family: string): Promise<MethodVariantListResponse> {
+  return api.get(`/method-families/${family}/variants`)
+}
+
+export async function setPreferredVariant(
+  family: string,
+  preferredVariant: string,
+  userId: string = 'default',
+): Promise<{ success: boolean; preference: PreferredVariantState }> {
+  return api.post(`/method-families/${family}/preferred-variant`, {
+    preferred_variant: preferredVariant,
+    user_id: userId,
+  })
+}
+
+export async function promoteAnalysisVariant(
+  analysisId: string,
+): Promise<{ analysis_id: string; skill_name: string; family: string; variant: string }> {
+  return api.post(`/analysis/${analysisId}/promote-variant`)
 }
 
 export async function getConfig(): Promise<FullConfig> {
@@ -109,12 +150,19 @@ export async function updateSandboxConfig(config: SandboxConfig): Promise<Sandbo
   return api.put('/config/sandbox', config)
 }
 
-// Skills API
-export async function getSkills(): Promise<{ success: boolean; skills: Array<{ name: string; description: string; enabled: boolean }>; total: number }> {
+export interface SkillListItem {
+  name: string
+  description: string
+  enabled: boolean
+  metadata: Record<string, unknown>
+  capability: Record<string, unknown>
+}
+
+export async function getSkills(): Promise<{ success: boolean; skills: SkillListItem[]; total: number }> {
   return api.get('/skills')
 }
 
-export async function getSkill(skillName: string): Promise<{ success: boolean; skill: Record<string, unknown> }> {
+export async function getSkill(skillName: string): Promise<{ success: boolean; skill: SkillListItem }> {
   return api.get(`/skills/${skillName}`)
 }
 
@@ -130,7 +178,6 @@ export async function deleteSkill(skillName: string): Promise<{ success: boolean
   return api.delete(`/skills/${skillName}`)
 }
 
-// User Config API
 export async function setApiKey(provider: string, apiKey: string): Promise<{ success: boolean; message: string }> {
   return api.put('/user/api-key', { provider, api_key: apiKey })
 }
@@ -143,7 +190,6 @@ export async function deleteApiKey(provider: string): Promise<{ success: boolean
   return api.delete(`/user/api-key/${provider}`)
 }
 
-// Custom Models API
 export interface CustomModel {
   name: string
   model_id: string
@@ -221,7 +267,7 @@ export async function getAvailableModels(): Promise<{ success: boolean; models: 
 }
 
 export async function healthCheck(): Promise<{ status: string; version: string }> {
-  return axios.get('/health').then((res) => res.data)
+  return axios.get('/health').then((response) => response.data)
 }
 
 export default api
